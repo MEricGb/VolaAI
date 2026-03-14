@@ -8,6 +8,9 @@ export class IncomingMessageDto {
   To!: string;
   NumMedia!: string;
   MediaUrl0?: string;
+  ProfileName?: string;
+  ButtonText?: string;
+  ButtonPayload?: string;
   MessageSid!: string;
   AccountSid!: string;
 }
