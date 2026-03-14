@@ -6,7 +6,11 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/main.js",
-    "start:dev": "ts-node -r reflect-metadata src/main.ts"
+    "start:dev": "ts-node -r dotenv/config -r reflect-metadata src/main.ts",
+    "dev:infra:up": "docker compose -f dev.yaml up -d",
+    "dev:infra:down": "docker compose -f dev.yaml down",
+    "dev:infra:logs": "docker compose -f dev.yaml logs -f",
+    "dev:all": "npm run dev:infra:up && npm run start:dev"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",
