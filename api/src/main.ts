@@ -15,6 +15,12 @@ async function bootstrap() {
 
   app.useBodyParser('urlencoded', { extended: true });
 
+  app.enableCors({
+    origin: process.env.CORS_ORIGIN ?? '*',
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    credentials: true,
+  });
+
   // Debug middleware to see ALL incoming requests
   app.use((req: any, res: any, next: any) => {
     if (req.url.startsWith('/whatsapp')) {
