@@ -22,12 +22,12 @@ start-release:
 # Optional image path usage:
 #   just prompt "compare this booking" image="/abs/path/to/ticket.jpg"
 prompt message session="test" image="":
-    payload=$$(SESSION="{{session}}" MESSAGE="{{message}}" IMAGE="{{image}}" python3 -c 'import json, os; m=os.environ["MESSAGE"]; i=os.environ["IMAGE"]; m=f"{m}\n[image_path={i}]" if i else m; print(json.dumps({"session_id": os.environ["SESSION"], "user_message": m}))'); \
+    SESSION="{{session}}" MESSAGE="{{message}}" IMAGE="{{image}}" python3 -c 'import json, os, pathlib; message = os.environ["MESSAGE"]; image = os.environ.get("IMAGE", ""); message = f"{message}\n[image_path={image}]" if image else message; pathlib.Path("/tmp/agent_prompt_payload.json").write_text(json.dumps({"session_id": os.environ["SESSION"], "user_message": message}))'
     grpcurl -plaintext \
         -proto proto/agent.proto \
-        -d "$$payload" \
+        -d @ \
         '[::1]:50052' \
-        agent.AgentService/Chat
+        agent.AgentService/Chat < /tmp/agent_prompt_payload.json
 
 # Check + clippy
 lint:

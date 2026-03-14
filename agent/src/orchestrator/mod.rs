@@ -16,6 +16,7 @@ use tracing::{info, instrument};
 use crate::{
     config::Config,
     error::AppError,
+    tools::DestinationIdTool,
     tools::OcrTool,
     tools::ScraperTool,
     tools::ocr::client::OcrClient,
@@ -66,6 +67,11 @@ impl OrchestrationEngine {
             .preamble(&preamble::build())
             .tool(ScraperTool::new(Arc::clone(&self.scraper_client)))
             .tool(OcrTool::new(Arc::clone(&self.ocr_client)))
+            .tool(DestinationIdTool::new(
+                self.config.featherless_api_key.clone(),
+                self.config.featherless_base_url.clone(),
+                self.config.destination_id_model.clone(),
+            ))
             .build();
 
         let reply = agent

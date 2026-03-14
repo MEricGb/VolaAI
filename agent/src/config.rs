@@ -9,6 +9,7 @@ pub struct Config {
     pub featherless_api_key:  String,
     pub featherless_base_url: String,
     pub featherless_model:    String,
+    pub destination_id_model: String,
     pub grpc_port:            u16,
     pub scraper_grpc_url:     String,
     pub ocr_grpc_url:         String,
@@ -25,6 +26,9 @@ impl Config {
 
             featherless_model: std::env::var("FEATHERLESS_MODEL")
                 .unwrap_or_else(|_| "Qwen/Qwen2.5-32B-Instruct".to_string()),
+
+            destination_id_model: std::env::var("DESTINATION_ID_MODEL")
+                .unwrap_or_else(|_| "Qwen/Qwen3-VL-30B-A3B-Instruct".to_string()),
 
             grpc_port: std::env::var("AGENT_GRPC_PORT")
                 .unwrap_or_else(|_| "50052".to_string())
