@@ -7,11 +7,68 @@ datasource db {
   provider = "postgresql"
 }
 
-// Example model to get started
+enum WhatsAppGroupMemberStatus {
+  INVITED
+  ACTIVE
+  LEFT
+}
+
 model User {
-  id        String   @id @default(uuid())
-  phone     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String               @id @default(uuid())
+  phone         String               @unique
+  name          String?
+  credits       Int                  @default(0)
+  memberships   WhatsAppGroupMember[]
+  ownedGroups   WhatsAppGroup[]      @relation("WhatsAppGroupOwner")
+  sentMessages  WhatsAppGroupMessage[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+}
+
+model WhatsAppGroup {
+  id               String                @id @default(uuid())
+  name             String
+  joinCode         String                @unique
+  conversationSid  String?               @unique
+  chatbotEnabled   Boolean               @default(true)
+  ownerId          String?
+  owner            User?                 @relation("WhatsAppGroupOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  members          WhatsAppGroupMember[]
+  messages         WhatsAppGroupMessage[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+}
+
+model WhatsAppGroupMember {
+  id             String                     @id @default(uuid())
+  groupId        String
+  userId         String?
+  phone          String
+  status         WhatsAppGroupMemberStatus  @default(INVITED)
+  invitedAt      DateTime                   @default(now())
+  joinedAt       DateTime?
+  lastInboundAt  DateTime?
+  user           User?                      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  group          WhatsAppGroup              @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  @@unique([groupId, phone])
+  @@index([phone, status])
+}
+
+model WhatsAppGroupMessage {
+  id               String           @id @default(uuid())
+  groupId          String
+  senderUserId     String?
+  senderPhone      String
+  body             String
+  sourceMessageSid String?          @unique
+  deliveredCount   Int              @default(0)
+  skippedCount     Int              @default(0)
+  group            WhatsAppGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  senderUser       User?            @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now())
+
+  @@index([groupId, createdAt])
 }
