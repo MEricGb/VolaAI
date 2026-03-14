@@ -1,0 +1,32 @@
+# Install Rust toolchain (if needed)
+setup:
+    rustup show
+
+# Build the agent in debug mode
+build:
+    cargo build
+
+# Build in release mode
+build-release:
+    cargo build --release
+
+# Start the agent gRPC server (debug)
+start:
+    cargo run
+
+# Start in release mode
+start-release:
+    cargo run --release
+
+# Send a test prompt to the running agent (requires grpcurl + server running via `just start`)
+prompt message session="test":
+    grpcurl -plaintext \
+        -proto proto/agent.proto \
+        -d "{\"session_id\":\"{{session}}\",\"user_message\":\"{{message}}\"}" \
+        '[::1]:50052' \
+        agent.AgentService/Chat
+
+# Check + clippy
+lint:
+    cargo fmt --check
+    cargo clippy -- -D warnings

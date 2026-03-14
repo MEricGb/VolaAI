@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: vibehack-db-dev
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=vibehack
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d vibehack"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis/redis-stack:latest
+    container_name: vibehack-redis-dev
+    ports:
+      - "6379:6379"
+      - "8001:8001"
+    volumes:
+      - redis-data-dev:/data
+
+  minio:
+    image: quay.io/minio/minio
+    container_name: vibehack-minio-dev
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+    volumes:
+      - minio-data-dev:/data
+    command: server /data --console-address ":9001"
+
+  nginx:
+    image: nginx:alpine
+    container_name: vibehack-nginx-dev
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
+volumes:
+  postgres-data-dev:
+  redis-data-dev:
+  minio-data-dev:

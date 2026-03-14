@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package agent;
+
+service AgentService {
+  rpc Chat(ChatRequest) returns (ChatResponse);
+}
+
+message ChatRequest {
+  string session_id    = 1;  // identifies the conversation session
+  string user_message  = 2;  // raw user input
+}
+
+message ChatResponse {
+  string reply = 1;
+}
