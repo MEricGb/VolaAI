@@ -1,0 +1,9 @@
+**/.git
+**/.env
+**/.DS_Store
+**/npm-debug.log
+**/node_modules
+**/dist
+**/__pycache__
+**/.venv
+**/target
