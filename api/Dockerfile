@@ -13,5 +13,5 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY api/package*.json ./
 # proto must be at /proto/agent.proto (path hardcoded in agent.service.ts)
 COPY proto/ /proto/
-EXPOSE 3000
+EXPOSE 8080
 CMD ["node", "dist/main.js"]
