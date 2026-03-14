@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 // Public Landing Page Components
@@ -13,19 +13,44 @@ import Footer from './components/Footer';
 import AdminLayout from './components/admin/AdminLayout';
 import AdminLogin from './components/admin/AdminLogin';
 import Dashboard from './components/admin/Dashboard';
+import { getPublicConfig } from './lib/api';
 
-const LandingPage = () => (
-  <div className="app-wrapper">
-    <Navbar />
-    <main>
-      <Hero />
-      <TrustBar />
-      <Features />
-      <FAQ />
-    </main>
-    <Footer />
-  </div>
-);
+const LandingPage = () => {
+  const [whatsAppNumber, setWhatsAppNumber] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getPublicConfig()
+      .then((config) => {
+        if (!cancelled) {
+          setWhatsAppNumber(config.whatsappNumber);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setWhatsAppNumber(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className="app-wrapper">
+      <Navbar whatsAppNumber={whatsAppNumber} />
+      <main>
+        <Hero whatsAppNumber={whatsAppNumber} />
+        <TrustBar />
+        <Features />
+        <FAQ />
+      </main>
+      <Footer />
+    </div>
+  );
+};
 
 
 // Placeholder components for other admin routes

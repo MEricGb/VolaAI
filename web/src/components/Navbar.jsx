@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Plane, Menu, X } from 'lucide-react';
 import '../App.css';
 
-const Navbar = () => {
+const waLink = (number) => `https://wa.me/${number.replace(/^\+/, '')}`;
+
+const Navbar = ({ whatsAppNumber }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -25,11 +27,17 @@ const Navbar = () => {
         <a href="#features" className="nav-link">Features</a>
         <a href="#faq" className="nav-link">FAQ</a>
         <a
-          href="https://wa.me/1234567890"
+          href={whatsAppNumber ? waLink(whatsAppNumber) : '#'}
           target="_blank"
           rel="noreferrer"
           className="btn btn-cta"
           style={{ fontSize: '0.85rem', padding: '0.55rem 1.25rem' }}
+          aria-disabled={!whatsAppNumber}
+          onClick={(event) => {
+            if (!whatsAppNumber) {
+              event.preventDefault();
+            }
+          }}
         >
           Try it Free
         </a>
@@ -48,12 +56,18 @@ const Navbar = () => {
           <a href="#features" className="nav-link" onClick={close}>Features</a>
           <a href="#faq" className="nav-link" onClick={close}>FAQ</a>
           <a
-            href="https://wa.me/1234567890"
+            href={whatsAppNumber ? waLink(whatsAppNumber) : '#'}
             target="_blank"
             rel="noreferrer"
             className="btn btn-cta"
             style={{ fontSize: '0.9rem', padding: '0.65rem 1.5rem', width: 'fit-content' }}
-            onClick={close}
+            aria-disabled={!whatsAppNumber}
+            onClick={(event) => {
+              if (!whatsAppNumber) {
+                event.preventDefault();
+              }
+              close();
+            }}
           >
             Try it Free
           </a>
