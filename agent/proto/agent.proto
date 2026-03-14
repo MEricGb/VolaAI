@@ -3,13 +3,12 @@ syntax = "proto3";
 package agent;
 
 service AgentService {
-  // Compose a natural-language reply given the user message and tool output.
   rpc Chat(ChatRequest) returns (ChatResponse);
 }
 
 message ChatRequest {
-  string user_message  = 1;  // raw user input
-  string tool_context  = 2;  // serialized output from the scraper tool
+  string session_id    = 1;  // identifies the conversation session
+  string user_message  = 2;  // raw user input
 }
 
 message ChatResponse {

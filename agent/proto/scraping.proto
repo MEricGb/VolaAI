@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package scraping;
+
+service ScrapingService {
+  rpc SearchFlights(SearchRequest) returns (SearchResponse);
+}
+
+message SearchRequest {
+  string session_id    = 1;
+  string user_message  = 2;
+}
+
+message SearchResponse {
+  oneof result {
+    FlightResults       flights       = 1;
+    ClarificationNeeded clarification = 2;
+    NoSearchYet         no_search     = 3;
+  }
+}
+
+message FlightResults {
+  repeated FlightOffer offers = 1;
+}
+
+message FlightOffer {
+  string offer_id          = 1;
+  string origin            = 2;
+  string destination       = 3;
+  string depart_date       = 4;
+  string return_date       = 5;
+  float  price_eur         = 6;
+  string airline           = 7;
+  string flight_number     = 8;
+  int32  duration_minutes  = 9;
+  int32  stops             = 10;
+  string deep_link         = 11;
+}
+
+message ClarificationNeeded {
+  string          question       = 1;
+  repeated string missing_fields = 2;
+}
+
+message NoSearchYet {
+  string reason = 1;
+}
