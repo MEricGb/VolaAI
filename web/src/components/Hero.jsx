@@ -2,6 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Send, MessageCircle } from 'lucide-react';
 import '../App.css';
 
+const WA_NUMBER = import.meta.env.VITE_WHATSAPP_NUMBER ?? '14155238886';
+const waLink = (text) =>
+  `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(text)}`;
+
 const Hero = () => {
   const [messages, setMessages] = useState([
     { text: "Hi! Where would you like to travel today?", user: false },
@@ -122,7 +126,7 @@ const Hero = () => {
 
         <div className="cta-box">
           <a
-            href="https://wa.me/1234567890?text=Hi!%20I'd%20like%20to%20plan%20a%20trip."
+            href={waLink("Hi! I'd like to plan a trip.")}
             target="_blank"
             rel="noreferrer"
             className="btn-whatsapp"
@@ -134,9 +138,21 @@ const Hero = () => {
           <div className="suggested-prompts">
             <p>Try saying:</p>
             <div className="prompts-grid">
-              <span className="prompt-pill">"Fly me to Rome next Friday"</span>
-              <span className="prompt-pill">"Hotel in Dubai under €150"</span>
-              <span className="prompt-pill">"Weekend in Paris, 2 people"</span>
+              {[
+                'Fly me to Rome next Friday',
+                'Hotel in Dubai under €150',
+                'Weekend in Paris, 2 people',
+              ].map((prompt) => (
+                <a
+                  key={prompt}
+                  href={waLink(prompt)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="prompt-pill"
+                >
+                  "{prompt}"
+                </a>
+              ))}
             </div>
           </div>
         </div>
