@@ -21,8 +21,23 @@ start-release:
 # Send a test prompt to the running agent (no grpcurl dependency).
 # Optional image path usage:
 #   just prompt "compare this booking" image="/abs/path/to/ticket.jpg"
-prompt message session="test" image="":
-    SESSION="{{session}}" MESSAGE="{{message}}" IMAGE="{{image}}" /Users/gabrielindrei/site_pastrami/vibehack-2026/ocr/.venv/bin/python -c 'import os, sys, grpc; sys.path.insert(0, "/tmp/agent_grpc_test"); import agent_pb2, agent_pb2_grpc; message = os.environ["MESSAGE"]; image = os.environ.get("IMAGE", ""); user_message = f"{message}\n[image_path={image}]" if image else message; channel = grpc.insecure_channel("localhost:50052"); grpc.channel_ready_future(channel).result(timeout=5); stub = agent_pb2_grpc.AgentServiceStub(channel); resp = stub.Chat(agent_pb2.ChatRequest(session_id=os.environ["SESSION"], user_message=user_message), timeout=240); print(resp.reply)'
+prompt message image="" session="test":
+    python3 -c "import json, sys; msg='{{message}}'; img='{{image}}'; full=msg+'\n[image_path='+img+']' if img else msg; print(json.dumps({'session_id':'{{session}}','user_message':full}))" \
+    | grpcurl -plaintext \
+        -proto ../proto/agent.proto \
+        -d @ \
+        '[::1]:50052' \
+        agent.AgentService/Chat
+
+# Test OCR with a local image file (single required arg avoids just's optional-param quirk)
+# Usage: just ocr /abs/path/to/ticket.jpg
+ocr image:
+    python3 -c "import json; print(json.dumps({'session_id':'test','user_message':'Here is my booking screenshot, please extract all the flight details.\n[image_path={{image}}]'}))" \
+    | grpcurl -plaintext \
+        -proto ../proto/agent.proto \
+        -d @ \
+        '[::1]:50052' \
+        agent.AgentService/Chat
 
 # Check + clippy
 lint:

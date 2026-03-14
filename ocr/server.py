@@ -104,10 +104,15 @@ class OcrServicer(ocr_pb2_grpc.OcrServiceServicer):
         if payload.comparison_query is not None:
             comparison_query_json = json.dumps(payload.comparison_query, ensure_ascii=True)
 
+        raw_ocr_text = ""
+        if payload.booking_info:
+            raw_ocr_text = payload.booking_info.raw_text or ""
+
         return ocr_pb2.ExtractBookingResponse(
             success=True,
             summary=_summary_from_payload(payload),
             comparison_query_json=comparison_query_json,
+            raw_ocr_text=raw_ocr_text,
         )
 
 

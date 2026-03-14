@@ -11,6 +11,7 @@ import Footer from './components/Footer';
 
 // Admin Dashboard Components
 import AdminLayout from './components/admin/AdminLayout';
+import AdminLogin from './components/admin/AdminLogin';
 import Dashboard from './components/admin/Dashboard';
 
 const LandingPage = () => (
@@ -42,6 +43,9 @@ function App() {
         {/* Public Route */}
         <Route path="/" element={<LandingPage />} />
         
+        {/* Admin Login */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+
         {/* Protected Admin Routes */}
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<Dashboard />} />

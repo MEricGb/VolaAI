@@ -1,0 +1,8 @@
+[build]
+builder = "dockerfile"
+# IMPORTANT: In Railway dashboard, set this service's Root Directory to /
+# (repo root) so proto/ is in the Docker build context.
+dockerfilePath = "agent/Dockerfile"
+
+[deploy]
+restartPolicyType = "on_failure"
