@@ -1,5 +1,5 @@
 # Build context must be the repo root (not agent/) so proto/ is accessible
-FROM rust:1.82-slim AS builder
+FROM rust:1.85-slim AS builder
 RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 # Copy full repo so build.rs can find ../proto/ (i.e. /build/proto/)
