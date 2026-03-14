@@ -1,12 +1,16 @@
 //! Agent service configuration.
+//!
+//! Loads all settings from environment variables on startup.
 
 use anyhow::{Context, Result};
 
+/// Runtime configuration for the agent service.
 pub struct Config {
     pub featherless_api_key:  String,
     pub featherless_base_url: String,
     pub featherless_model:    String,
     pub grpc_port:            u16,
+    pub scraper_grpc_url:     String,
 }
 
 impl Config {
@@ -25,6 +29,9 @@ impl Config {
                 .unwrap_or_else(|_| "50052".to_string())
                 .parse()
                 .context("AGENT_GRPC_PORT must be a valid port number")?,
+
+            scraper_grpc_url: std::env::var("SCRAPER_GRPC_URL")
+                .unwrap_or_else(|_| "http://[::1]:50051".to_string()),
         })
     }
 }

@@ -1,27 +1,32 @@
-# Run from the workspace root so cargo can resolve workspace deps
-workspace := "../"
-
-# Install Rust toolchain (if needed) and build
+# Install Rust toolchain (if needed)
 setup:
     rustup show
 
 # Build the agent in debug mode
 build:
-    cargo build --manifest-path {{workspace}}Cargo.toml -p agent
+    cargo build
 
 # Build in release mode
 build-release:
-    cargo build --manifest-path {{workspace}}Cargo.toml -p agent --release
+    cargo build --release
 
 # Start the agent gRPC server (debug)
-start: build
-    cargo run --manifest-path {{workspace}}Cargo.toml -p agent
+start:
+    cargo run
 
 # Start in release mode
-start-release: build-release
-    cargo run --manifest-path {{workspace}}Cargo.toml -p agent --release
+start-release:
+    cargo run --release
+
+# Send a test prompt to the running agent (requires grpcurl + server running via `just start`)
+prompt message session="test":
+    grpcurl -plaintext \
+        -proto proto/agent.proto \
+        -d "{\"session_id\":\"{{session}}\",\"user_message\":\"{{message}}\"}" \
+        '[::1]:50052' \
+        agent.AgentService/Chat
 
 # Check + clippy
 lint:
-    cargo fmt --manifest-path {{workspace}}Cargo.toml -p agent --check
-    cargo clippy --manifest-path {{workspace}}Cargo.toml -p agent -- -D warnings
+    cargo fmt --check
+    cargo clippy -- -D warnings
