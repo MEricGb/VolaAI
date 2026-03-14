@@ -10,6 +10,8 @@ RUN npm run build
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY --from=builder /app/nginx.conf /etc/nginx/templates/default.conf.template
+# Reduce workers to avoid io_setup() failures on Railway's containers
+RUN sed -i 's/worker_processes  auto/worker_processes 2/' /etc/nginx/nginx.conf
 ENV PORT=80
 ENV NGINX_ENVSUBST_FILTER=PORT
 CMD ["nginx", "-g", "daemon off;"]
