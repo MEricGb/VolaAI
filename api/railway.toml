@@ -4,5 +4,5 @@ dockerfilePath = "Dockerfile.api"
 
 [deploy]
 startCommand = "node dist/main.js"
-healthcheckPath = "/whatsapp/public-config"
+healthcheckPath = "/health"
 restartPolicyType = "on_failure"
