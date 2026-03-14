@@ -7,19 +7,16 @@ service ScrapingService {
 }
 
 message SearchRequest {
-  string session_id    = 1;
-  string user_message  = 2;
+  string origin      = 1;  // IATA airport code e.g. "OTP"
+  string destination = 2;  // IATA airport code e.g. "BCN"
+  string depart_date = 3;  // ISO-8601 date "YYYY-MM-DD"
+  string return_date = 4;  // ISO-8601 date or empty string for one-way
+  int32  adults      = 5;  // defaults to 1 if 0
+  int32  children    = 6;
+  bool   is_one_way  = 7;
 }
 
 message SearchResponse {
-  oneof result {
-    FlightResults       flights       = 1;
-    ClarificationNeeded clarification = 2;
-    NoSearchYet         no_search     = 3;
-  }
-}
-
-message FlightResults {
   repeated FlightOffer offers = 1;
 }
 
@@ -35,13 +32,4 @@ message FlightOffer {
   int32  duration_minutes  = 9;
   int32  stops             = 10;
   string deep_link         = 11;
-}
-
-message ClarificationNeeded {
-  string          question       = 1;
-  repeated string missing_fields = 2;
-}
-
-message NoSearchYet {
-  string reason = 1;
 }

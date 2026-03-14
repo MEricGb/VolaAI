@@ -33,17 +33,27 @@ impl ScraperClient {
         })
     }
 
-    /// Send a search request to the scraper and return the raw response.
+    /// Send a structured search request to the scraper and return the response.
     pub async fn search(
         &self,
-        session_id: String,
-        user_message: String,
+        origin: String,
+        destination: String,
+        depart_date: String,
+        return_date: String,
+        adults: u32,
+        children: u32,
+        is_one_way: bool,
     ) -> Result<SearchResponse, AppError> {
         let mut client = self.inner.clone();
         let response = client
             .search_flights(SearchRequest {
-                session_id,
-                user_message,
+                origin,
+                destination,
+                depart_date,
+                return_date,
+                adults: adults as i32,   // safe: passenger counts never exceed i32::MAX
+                children: children as i32, // safe: passenger counts never exceed i32::MAX
+                is_one_way,
             })
             .await?;
         Ok(response.into_inner())
