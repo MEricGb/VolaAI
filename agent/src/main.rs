@@ -11,9 +11,11 @@ mod orchestrator;
 mod server;
 mod tools;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use tokio::sync::Mutex;
 use tonic::transport::Server;
 use tracing::info;
 
@@ -24,7 +26,7 @@ pub mod agent_proto {
 use agent_proto::agent_service_server::AgentServiceServer;
 use config::Config;
 use orchestrator::OrchestrationEngine;
-use server::AgentServiceImpl;
+use server::{AgentServiceImpl, SessionState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -43,11 +45,12 @@ async fn main() -> Result<()> {
         .context("Invalid gRPC address")?;
 
     let engine = Arc::new(OrchestrationEngine::new(Arc::clone(&config))?);
+    let sessions = Arc::new(Mutex::new(HashMap::<String, SessionState>::new()));
 
     info!(%addr, "Agent gRPC server starting");
 
     Server::builder()
-        .add_service(AgentServiceServer::new(AgentServiceImpl { engine }))
+        .add_service(AgentServiceServer::new(AgentServiceImpl { engine, sessions }))
         .serve(addr)
         .await?;
 

@@ -9,6 +9,7 @@ pub struct Config {
     pub featherless_api_key:  String,
     pub featherless_base_url: String,
     pub featherless_model:    String,
+    pub translation_model:    String,
     pub destination_id_model: String,
     pub grpc_port:            u16,
     pub scraper_grpc_url:     String,
@@ -17,6 +18,9 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Result<Self> {
+        let featherless_model = std::env::var("FEATHERLESS_MODEL")
+            .unwrap_or_else(|_| "Qwen/Qwen2.5-32B-Instruct".to_string());
+
         Ok(Self {
             featherless_api_key: std::env::var("FEATHERLESS_API_KEY")
                 .context("FEATHERLESS_API_KEY must be set")?,
@@ -24,8 +28,10 @@ impl Config {
             featherless_base_url: std::env::var("FEATHERLESS_BASE_URL")
                 .unwrap_or_else(|_| "https://api.featherless.ai/v1".to_string()),
 
-            featherless_model: std::env::var("FEATHERLESS_MODEL")
-                .unwrap_or_else(|_| "Qwen/Qwen2.5-32B-Instruct".to_string()),
+            featherless_model: featherless_model.clone(),
+
+            translation_model: std::env::var("FEATHERLESS_TRANSLATION_MODEL")
+                .unwrap_or_else(|_| "Qwen/Qwen2.5-72B-Instruct".to_string()),
 
             destination_id_model: std::env::var("DESTINATION_ID_MODEL")
                 .unwrap_or_else(|_| "Qwen/Qwen3-VL-30B-A3B-Instruct".to_string()),
