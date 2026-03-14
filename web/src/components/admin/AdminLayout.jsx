@@ -1,15 +1,19 @@
-import React, { useState } from 'react';
-import { Outlet, Navigate, NavLink } from 'react-router-dom';
+import { Outlet, Navigate, NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, CreditCard, Settings, LogOut, Ticket } from 'lucide-react';
 import './admin.css';
 
 const AdminLayout = () => {
-  // Temporary auth state mock
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+  const navigate = useNavigate();
+  const isAuthenticated = localStorage.getItem('admin_auth') === 'true';
 
   if (!isAuthenticated) {
     return <Navigate to="/admin/login" replace />;
   }
+
+  const handleLogout = () => {
+    localStorage.removeItem('admin_auth');
+    navigate('/admin/login', { replace: true });
+  };
 
   return (
     <div className="admin-layout">
@@ -19,29 +23,29 @@ const AdminLayout = () => {
           <Ticket className="text-primary" size={24} />
           <span>Vola<span style={{ color: 'var(--color-accent)' }}>.ai</span> Admin</span>
         </div>
-        
+
         <nav className="admin-nav">
-          <NavLink 
-            to="/admin" 
-            end 
+          <NavLink
+            to="/admin"
+            end
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <LayoutDashboard size={20} /> Dashboard
           </NavLink>
-          <NavLink 
-            to="/admin/users" 
+          <NavLink
+            to="/admin/users"
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <Users size={20} /> Users & Convs
           </NavLink>
-          <NavLink 
-            to="/admin/payments" 
+          <NavLink
+            to="/admin/payments"
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <CreditCard size={20} /> Payments
           </NavLink>
-          <NavLink 
-            to="/admin/settings" 
+          <NavLink
+            to="/admin/settings"
             className={({ isActive }) => `admin-nav-item ${isActive ? 'active' : ''}`}
           >
             <Settings size={20} /> Settings
@@ -49,9 +53,9 @@ const AdminLayout = () => {
         </nav>
 
         <div className="admin-logout">
-          <button 
-            className="admin-nav-item" 
-            onClick={() => setIsAuthenticated(false)}
+          <button
+            className="admin-nav-item"
+            onClick={handleLogout}
             style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
           >
             <LogOut size={20} /> Logout
