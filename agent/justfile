@@ -18,7 +18,7 @@ start:
 start-release:
     cargo run --release
 
-# Send a test prompt to the running agent (requires grpcurl + server running via `just start`)
+# Send a test prompt to the running agent (no grpcurl dependency).
 # Optional image path usage:
 #   just prompt "compare this booking" image="/abs/path/to/ticket.jpg"
 prompt message image="" session="test":

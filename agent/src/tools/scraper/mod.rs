@@ -6,6 +6,7 @@
 
 pub mod client;
 
+use std::time::Duration;
 use std::sync::Arc;
 
 use rig::{completion::ToolDefinition, tool::Tool};
@@ -24,6 +25,8 @@ pub struct SearchFlightsArgs {
     pub adults: Option<u32>,
     pub children: Option<u32>,
     pub is_one_way: Option<bool>,
+    pub include_links: Option<bool>,
+    pub option_index: Option<u32>,
 }
 
 /// Serializable output returned to the LLM after tool execution.
@@ -41,6 +44,77 @@ pub struct ScraperTool {
 impl ScraperTool {
     pub fn new(client: Arc<ScraperClient>) -> Self {
         Self { client }
+    }
+}
+
+async fn looks_unavailable_booking_page(url: &str) -> bool {
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+
+    let response = match client
+        .get(url)
+        .header(
+            reqwest::header::USER_AGENT,
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        )
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+
+    let body = match response.text().await {
+        Ok(text) => text.to_lowercase(),
+        Err(_) => return false,
+    };
+
+    [
+        "fully booked",
+        "sold out",
+        "not available",
+        "no longer available",
+        "nu mai este disponibil",
+    ]
+    .iter()
+    .any(|needle| body.contains(needle))
+}
+
+async fn pick_available_offer<'a>(
+    top: &[&'a client::scraping_proto::FlightOffer],
+    requested_idx: usize,
+) -> Option<(usize, &'a client::scraping_proto::FlightOffer)> {
+    if top.is_empty() {
+        return None;
+    }
+
+    let mut probe_order = Vec::with_capacity(top.len());
+    if requested_idx < top.len() {
+        probe_order.push(requested_idx);
+    }
+    for i in 0..top.len() {
+        if i != requested_idx {
+            probe_order.push(i);
+        }
+    }
+
+    for idx in probe_order {
+        let offer = top[idx];
+        if !looks_unavailable_booking_page(&offer.deep_link).await {
+            return Some((idx, offer));
+        }
+    }
+
+    // If all probes look unavailable, still return requested option when possible.
+    if requested_idx < top.len() {
+        Some((requested_idx, top[requested_idx]))
+    } else {
+        Some((0, top[0]))
     }
 }
 
@@ -108,6 +182,14 @@ impl Tool for ScraperTool {
                     "is_one_way": {
                         "type": "boolean",
                         "description": "True for one-way, false/omit for round-trip"
+                    },
+                    "include_links": {
+                        "type": "boolean",
+                        "description": "Set true when the user explicitly asks for booking link(s). Default false."
+                    },
+                    "option_index": {
+                        "type": "integer",
+                        "description": "1-based option number from the previously shown list. Use with include_links=true."
                     }
                 },
                 "required": ["origin", "destination", "depart_date"]
@@ -144,25 +226,81 @@ impl Tool for ScraperTool {
         let summary = if response.offers.is_empty() {
             "No flights found for the given route and dates.".to_string()
         } else {
-            let lines: Vec<String> = response
-                .offers
-                .iter()
-                .take(5)
-                .map(|o| {
+            let top: Vec<_> = response.offers.iter().take(5).collect();
+            let include_links = args.include_links.unwrap_or(false);
+            let selected_option = args.option_index.and_then(|n| n.checked_sub(1)).map(|n| n as usize);
+
+            if include_links
+                && let Some(idx) = selected_option
+                && let Some((picked_idx, o)) = pick_available_offer(&top, idx).await
+            {
+                let return_date = if o.return_date.trim().is_empty() {
+                    "one-way".to_string()
+                } else {
+                    o.return_date.clone()
+                };
+
+                let selection_note = if picked_idx == idx {
+                    format!("selected option {} is currently available", idx + 1)
+                } else {
                     format!(
-                        "{} → {} on {} | {} | €{:.2} | {} stop(s) | {}min | {}",
+                        "requested option {} looked unavailable; switched to available option {}",
+                        idx + 1,
+                        picked_idx + 1
+                    )
+                };
+
+                return Ok(SearchFlightsOutput {
+                    summary: format!(
+                    "{}\noption {} | offer_id {} | {} -> {} | depart {} | return {} | airline {} | price_eur {:.2} | stops {} | duration_min {}\nbooking_url: {}",
+                    selection_note,
+                    picked_idx + 1,
+                    o.offer_id,
+                    o.origin,
+                    o.destination,
+                    o.depart_date,
+                    return_date,
+                    o.airline,
+                    o.price_eur,
+                    o.stops,
+                    o.duration_minutes,
+                    o.deep_link,
+                ),
+                });
+            }
+
+            let lines: Vec<String> = top
+                .iter()
+                .enumerate()
+                .map(|(idx, o)| {
+                    let return_date = if o.return_date.trim().is_empty() {
+                        "one-way".to_string()
+                    } else {
+                        o.return_date.clone()
+                    };
+
+                    format!(
+                        "option {} | offer_id {} | {} -> {} | depart {} | return {} | airline {} | price_eur {:.2} | stops {} | duration_min {}",
+                        idx + 1,
+                        o.offer_id,
                         o.origin,
                         o.destination,
                         o.depart_date,
+                        return_date,
                         o.airline,
                         o.price_eur,
                         o.stops,
                         o.duration_minutes,
-                        o.deep_link,
                     )
                 })
                 .collect();
-            format!("Found {} flight(s):\n{}", response.offers.len(), lines.join("\n"))
+
+            format!(
+                "Found {} flight(s), showing top {} ranked options. Links are available on request by option number.\n{}",
+                response.offers.len(),
+                lines.len(),
+                lines.join("\n")
+            )
         };
 
         Ok(SearchFlightsOutput { summary })

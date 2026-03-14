@@ -11,7 +11,7 @@ use std::sync::Arc;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::openai;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use crate::{
     config::Config,
@@ -28,6 +28,54 @@ pub struct OrchestrationEngine {
     config: Arc<Config>,
     scraper_client: Arc<ScraperClient>,
     ocr_client: Arc<OcrClient>,
+}
+
+pub struct ProcessResult {
+    pub reply: String,
+    pub language: String,
+}
+
+fn has_script_chars(text: &str, start: char, end: char) -> bool {
+    text.chars().any(|c| c >= start && c <= end)
+}
+
+fn should_refresh_cached_language(cached_language: &str, text: &str) -> bool {
+    let lower = text.to_lowercase();
+    let explicit_switch_markers = [
+        "answer in",
+        "respond in",
+        "write in",
+        "speak in",
+        "in english",
+        "în engleză",
+        "in romanian",
+        "în română",
+        "en español",
+        "en francais",
+        "en français",
+        "auf deutsch",
+    ];
+
+    if explicit_switch_markers.iter().any(|m| lower.contains(m)) {
+        return true;
+    }
+
+    let cached = cached_language.to_lowercase();
+    let has_cyrillic = has_script_chars(text, '\u{0400}', '\u{04FF}');
+    let has_arabic = has_script_chars(text, '\u{0600}', '\u{06FF}');
+    let has_han = has_script_chars(text, '\u{4E00}', '\u{9FFF}');
+
+    if has_cyrillic && !matches!(cached.as_str(), "ru" | "uk" | "bg" | "sr" | "mk") {
+        return true;
+    }
+    if has_arabic && cached != "ar" {
+        return true;
+    }
+    if has_han && !matches!(cached.as_str(), "zh" | "ja") {
+        return true;
+    }
+
+    false
 }
 
 impl OrchestrationEngine {
@@ -53,7 +101,9 @@ impl OrchestrationEngine {
         &self,
         session_id: &str,
         user_message: &str,
-    ) -> Result<String, AppError> {
+        original_user_message: &str,
+        preferred_language: Option<&str>,
+    ) -> Result<ProcessResult, AppError> {
         info!(user_message, "Processing request");
 
         let client = openai::CompletionsClient::builder()
@@ -61,6 +111,45 @@ impl OrchestrationEngine {
             .base_url(&self.config.featherless_base_url)
             .build()
             .map_err(|e| AppError::Llm(format!("LLM client init failed: {e}")))?;
+
+        let language = if let Some(lang) = preferred_language {
+            if should_refresh_cached_language(lang, original_user_message) {
+                self
+                    .detect_user_language(&client, original_user_message)
+                    .await
+                    .unwrap_or_else(|e| {
+                        warn!(error = %e, "Language refresh failed; keeping cached language");
+                        lang.to_string()
+                    })
+            } else {
+                lang.to_string()
+            }
+        } else {
+            self
+                .detect_user_language(&client, original_user_message)
+                .await
+                .unwrap_or_else(|e| {
+                    warn!(error = %e, "Language detection failed; defaulting to English");
+                    "en".to_string()
+                })
+        };
+
+        let working_message = if language.eq_ignore_ascii_case("en") {
+            user_message.to_string()
+        } else {
+            self.translate_text(
+                &client,
+                &language,
+                "English",
+                user_message,
+                "Translate the input to English. Keep line breaks and special tokens unchanged.",
+            )
+            .await
+            .unwrap_or_else(|e| {
+                warn!(error = %e, "Input translation failed; using original input");
+                user_message.to_string()
+            })
+        };
 
         let agent = client
             .agent(&self.config.featherless_model)
@@ -80,10 +169,88 @@ impl OrchestrationEngine {
             .build();
 
         let reply = agent
-            .prompt(user_message)
+            .prompt(&working_message)
             .await
             .map_err(|e| AppError::Llm(e.to_string()))?;
 
-        Ok(reply)
+        if language.eq_ignore_ascii_case("en") {
+            return Ok(ProcessResult { reply, language });
+        }
+
+        let localized_reply = self
+            .translate_text(
+                &client,
+                "English",
+                &language,
+                &reply,
+                "Translate the assistant reply to the target language while preserving URLs, codes, dates, numbers, and booking_url lines exactly.",
+            )
+            .await
+            .unwrap_or_else(|e| {
+                warn!(error = %e, "Output translation failed; returning English reply");
+                reply.clone()
+            });
+
+        Ok(ProcessResult {
+            reply: localized_reply,
+            language,
+        })
+    }
+
+    async fn detect_user_language(
+        &self,
+        client: &openai::CompletionsClient,
+        text: &str,
+    ) -> Result<String, AppError> {
+        let detector = client
+            .agent(&self.config.translation_model)
+            .preamble("Detect the primary language of the provided text. Return only a lowercase ISO-639-1 code like en, ro, es, fr, de, it, pt, tr, ar, ru, uk, zh, ja. No extra text.")
+            .build();
+
+        let code = detector
+            .prompt(text)
+            .await
+            .map_err(|e| AppError::Llm(format!("Language detection failed: {e}")))?;
+
+        let normalized = code
+            .trim()
+            .lines()
+            .next()
+            .unwrap_or("en")
+            .chars()
+            .filter(|c| c.is_ascii_alphabetic())
+            .collect::<String>()
+            .to_lowercase();
+
+        if normalized.len() >= 2 {
+            Ok(normalized[..2].to_string())
+        } else {
+            Ok("en".to_string())
+        }
+    }
+
+    async fn translate_text(
+        &self,
+        client: &openai::CompletionsClient,
+        source_language: &str,
+        target_language: &str,
+        text: &str,
+        extra_instruction: &str,
+    ) -> Result<String, AppError> {
+        let translator = client
+            .agent(&self.config.translation_model)
+            .preamble(
+                "You are a professional translation engine. Produce fluent, grammatically correct target-language text with natural wording and correct diacritics. Preserve meaning, line breaks, URLs, codes, dates, and numbers exactly. Output only translated text.",
+            )
+            .build();
+
+        let prompt = format!(
+            "Source language: {source_language}\nTarget language: {target_language}\n{extra_instruction}\nText:\n{text}"
+        );
+
+        translator
+            .prompt(&prompt)
+            .await
+            .map_err(|e| AppError::Llm(format!("Translation failed: {e}")))
     }
 }
