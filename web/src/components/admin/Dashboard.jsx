@@ -1,34 +1,227 @@
-import React from 'react';
-import { Users, MessageSquareText, Image as ImageIcon, CreditCard, ChevronRight } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Users,
+  MessageSquareText,
+  UserCheck,
+  MessagesSquare,
+  RefreshCw,
+} from 'lucide-react';
+import {
+  addGroupMembers,
+  createGroup,
+  getAdminOverview,
+  getGroups,
+  sendGroupMessage,
+} from '../../lib/api';
+
+const formatDate = (value) =>
+  value
+    ? new Date(value).toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '-';
+
+const normalizePhones = (input) =>
+  input
+    .split(',')
+    .map((phone) => phone.trim())
+    .filter(Boolean);
 
 const Dashboard = () => {
-  // Mock data as requested
-  const metrics = [
-    { title: "Total Users", value: "1,248", icon: <Users size={28} />, bg: "#e0e7ff", color: "#4f46e5" },
-    { title: "Total Convs", value: "5,832", icon: <MessageSquareText size={28} />, bg: "#dcfce7", color: "#16a34a" },
-    { title: "Total Images", value: "840", icon: <ImageIcon size={28} />, bg: "#fef3c7", color: "#d97706" },
-    { title: "Payments", value: "€124,500", icon: <CreditCard size={28} />, bg: "#fee2e2", color: "#dc2626" },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [overview, setOverview] = useState(null);
+  const [groups, setGroups] = useState([]);
 
-  const recentUsers = [
-    { phone: "+40 722 123 456", name: "Alexandru Popescu", date: "Today, 10:42 AM", status: "Active" },
-    { phone: "+44 7911 123456", name: "Sarah Jenkins", date: "Today, 09:15 AM", status: "Active" },
-    { phone: "+40 755 987 654", name: "Maria Ionescu", date: "Yesterday", status: "Inactive" },
-    { phone: "+39 342 123 4567", name: "Marco Rossi", date: "Yesterday", status: "Active" },
-  ];
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    ownerPhone: '',
+    ownerName: '',
+    memberPhones: '',
+  });
+  const [addMembersForm, setAddMembersForm] = useState({
+    groupId: '',
+    memberPhones: '',
+  });
+  const [messageForm, setMessageForm] = useState({
+    groupId: '',
+    body: '',
+    senderPhone: '',
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState('');
 
-  const recentTransactions = [
-    { id: "TRX-8921", user: "Alexandru Popescu", amount: "€340.00", dest: "Rome (FCO)", status: "Completed" },
-    { id: "TRX-8920", user: "Sarah Jenkins", amount: "€850.00", dest: "Dubai (DXB)", status: "Processing" },
-    { id: "TRX-8919", user: "Ionela Stan", amount: "€125.00", dest: "London (LTN)", status: "Completed" },
-  ];
+  const loadData = async (silent = false) => {
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    setError('');
+
+    try {
+      const [overviewData, groupsData] = await Promise.all([
+        getAdminOverview(),
+        getGroups(),
+      ]);
+      setOverview(overviewData);
+      setGroups(groupsData);
+      setActionFeedback('');
+    } catch (err) {
+      setError(err.message || 'Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    if (!groups.length) {
+      return;
+    }
+
+    setAddMembersForm((prev) => ({
+      ...prev,
+      groupId: prev.groupId || groups[0].id,
+    }));
+    setMessageForm((prev) => ({
+      ...prev,
+      groupId: prev.groupId || groups[0].id,
+    }));
+  }, [groups]);
+
+  const metrics = useMemo(() => {
+    const values = overview?.metrics ?? {};
+    return [
+      {
+        title: 'Total Users',
+        value: values.totalUsers ?? 0,
+        icon: <Users size={28} />,
+        bg: '#e0e7ff',
+        color: '#4f46e5',
+      },
+      {
+        title: 'WhatsApp Groups',
+        value: values.totalGroups ?? 0,
+        icon: <MessagesSquare size={28} />,
+        bg: '#dcfce7',
+        color: '#16a34a',
+      },
+      {
+        title: 'Total Messages',
+        value: values.totalMessages ?? 0,
+        icon: <MessageSquareText size={28} />,
+        bg: '#fef3c7',
+        color: '#d97706',
+      },
+      {
+        title: 'Active Members',
+        value: values.activeMembers ?? 0,
+        icon: <UserCheck size={28} />,
+        bg: '#fee2e2',
+        color: '#dc2626',
+      },
+    ];
+  }, [overview]);
+
+  const handleCreateGroup = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setActionFeedback('');
+    try {
+      const result = await createGroup(
+        createForm.name.trim(),
+        createForm.ownerPhone.trim() || undefined,
+        createForm.ownerName.trim() || undefined,
+        normalizePhones(createForm.memberPhones),
+      );
+      setActionFeedback(
+        `Group "${result.name}" created. Join code: ${result.joinCode}.`,
+      );
+      setCreateForm({ name: '', ownerPhone: '', ownerName: '', memberPhones: '' });
+      await loadData(true);
+    } catch (err) {
+      setActionFeedback(err.message || 'Failed to create group');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAddMembers = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setActionFeedback('');
+    try {
+      const result = await addGroupMembers(
+        addMembersForm.groupId,
+        normalizePhones(addMembersForm.memberPhones),
+      );
+      setActionFeedback(
+        `Added ${result.added} member(s). Invites sent: ${result.invitesSent}.`,
+      );
+      setAddMembersForm((prev) => ({ ...prev, memberPhones: '' }));
+      await loadData(true);
+    } catch (err) {
+      setActionFeedback(err.message || 'Failed to add members');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setActionFeedback('');
+    try {
+      await sendGroupMessage(
+        messageForm.groupId,
+        messageForm.body.trim(),
+        messageForm.senderPhone.trim() || undefined,
+      );
+      setActionFeedback('Message sent to the selected group.');
+      setMessageForm((prev) => ({ ...prev, body: '' }));
+      await loadData(true);
+    } catch (err) {
+      setActionFeedback(err.message || 'Failed to send message');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="admin-card">Loading WhatsApp/Postgres data...</div>;
+  }
 
   return (
     <div>
-      {/* Metrics Section */}
+      {error && <div className="admin-alert admin-alert-error">{error}</div>}
+      {actionFeedback && <div className="admin-alert admin-alert-info">{actionFeedback}</div>}
+
+      <div className="admin-card-header">
+        <h3>Live WhatsApp Overview</h3>
+        <button
+          type="button"
+          className="btn btn-primary admin-refresh"
+          onClick={() => loadData(true)}
+          disabled={refreshing}
+        >
+          <RefreshCw size={16} className={refreshing ? 'spin' : ''} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </div>
+
       <div className="dashboard-metrics">
-        {metrics.map((m, i) => (
-          <div key={i} className="metric-card">
+        {metrics.map((m) => (
+          <div key={m.title} className="metric-card">
             <div className="metric-icon" style={{ backgroundColor: m.bg, color: m.color }}>
               {m.icon}
             </div>
@@ -40,14 +233,96 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Tables Section */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '2rem' }}>
-        
-        {/* Users Table */}
+      <div className="admin-grid admin-grid-3">
+        <div className="admin-card">
+          <h3>Create WhatsApp Group</h3>
+          <form onSubmit={handleCreateGroup} className="admin-form">
+            <input
+              value={createForm.name}
+              onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+              placeholder="Group name"
+              required
+            />
+            <input
+              value={createForm.ownerPhone}
+              onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerPhone: e.target.value }))}
+              placeholder="Owner phone (+15551234567)"
+            />
+            <input
+              value={createForm.ownerName}
+              onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerName: e.target.value }))}
+              placeholder="Owner display name (optional)"
+            />
+            <textarea
+              value={createForm.memberPhones}
+              onChange={(e) => setCreateForm((prev) => ({ ...prev, memberPhones: e.target.value }))}
+              placeholder="Member phones, comma separated"
+              rows={3}
+            />
+            <button type="submit" disabled={submitting}>Create Group</button>
+          </form>
+        </div>
+
+        <div className="admin-card">
+          <h3>Add Members</h3>
+          <form onSubmit={handleAddMembers} className="admin-form">
+            <select
+              value={addMembersForm.groupId}
+              onChange={(e) => setAddMembersForm((prev) => ({ ...prev, groupId: e.target.value }))}
+              required
+            >
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name} ({group.joinCode})
+                </option>
+              ))}
+            </select>
+            <textarea
+              value={addMembersForm.memberPhones}
+              onChange={(e) => setAddMembersForm((prev) => ({ ...prev, memberPhones: e.target.value }))}
+              placeholder="Phones, comma separated"
+              rows={4}
+              required
+            />
+            <button type="submit" disabled={submitting || groups.length === 0}>Add Members</button>
+          </form>
+        </div>
+
+        <div className="admin-card">
+          <h3>Send Group Message</h3>
+          <form onSubmit={handleSendMessage} className="admin-form">
+            <select
+              value={messageForm.groupId}
+              onChange={(e) => setMessageForm((prev) => ({ ...prev, groupId: e.target.value }))}
+              required
+            >
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name} ({group.joinCode})
+                </option>
+              ))}
+            </select>
+            <input
+              value={messageForm.senderPhone}
+              onChange={(e) => setMessageForm((prev) => ({ ...prev, senderPhone: e.target.value }))}
+              placeholder="Sender phone (+15551234567, optional)"
+            />
+            <textarea
+              value={messageForm.body}
+              onChange={(e) => setMessageForm((prev) => ({ ...prev, body: e.target.value }))}
+              placeholder="Message body"
+              rows={4}
+              required
+            />
+            <button type="submit" disabled={submitting || groups.length === 0}>Send Message</button>
+          </form>
+        </div>
+      </div>
+
+      <div className="admin-grid">
         <div className="admin-card">
           <div className="admin-card-header">
-            <h3>Recent Users</h3>
-            <button className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.875rem' }}>View All</button>
+            <h3>Recent Users (Postgres)</h3>
           </div>
           <div className="admin-table-container">
             <table className="admin-table">
@@ -55,21 +330,15 @@ const Dashboard = () => {
                 <tr>
                   <th>Phone Number</th>
                   <th>Name</th>
-                  <th>Joined Date</th>
-                  <th>Status</th>
+                  <th>Created</th>
                 </tr>
               </thead>
               <tbody>
-                {recentUsers.map((u, i) => (
-                  <tr key={i}>
-                    <td style={{ fontWeight: 500 }}>{u.phone}</td>
-                    <td>{u.name}</td>
-                    <td style={{ color: 'var(--text-secondary)' }}>{u.date}</td>
-                    <td>
-                      <span className={`badge ${u.status === 'Active' ? 'badge-success' : 'badge-warning'}`}>
-                        {u.status}
-                      </span>
-                    </td>
+                {(overview?.recentUsers ?? []).map((user) => (
+                  <tr key={user.id}>
+                    <td style={{ fontWeight: 500 }}>{user.phone}</td>
+                    <td>{user.name || '-'}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{formatDate(user.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -77,35 +346,27 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Transactions Table */}
         <div className="admin-card">
           <div className="admin-card-header">
-            <h3>Recent Payments</h3>
-            <button className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.875rem' }}>View All</button>
+            <h3>Recent Group Messages</h3>
           </div>
           <div className="admin-table-container">
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>Transaction ID</th>
-                  <th>User</th>
-                  <th>Destination</th>
-                  <th>Amount</th>
-                  <th>Status</th>
+                  <th>Group</th>
+                  <th>Sender</th>
+                  <th>Body</th>
+                  <th>Created</th>
                 </tr>
               </thead>
               <tbody>
-                {recentTransactions.map((t, i) => (
-                  <tr key={i}>
-                    <td style={{ fontWeight: 500, color: 'var(--color-primary)' }}>{t.id}</td>
-                    <td>{t.user}</td>
-                    <td>{t.dest}</td>
-                    <td style={{ fontWeight: 600 }}>{t.amount}</td>
-                    <td>
-                      <span className={`badge ${t.status === 'Completed' ? 'badge-success' : 'badge-blue'}`}>
-                        {t.status}
-                      </span>
-                    </td>
+                {(overview?.recentMessages ?? []).map((message) => (
+                  <tr key={message.id}>
+                    <td>{message.group?.name || '-'}</td>
+                    <td>{message.senderUser?.name || message.senderPhone}</td>
+                    <td>{message.body}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{formatDate(message.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -113,6 +374,37 @@ const Dashboard = () => {
           </div>
         </div>
 
+        <div className="admin-card">
+          <div className="admin-card-header">
+            <h3>Recent Groups</h3>
+          </div>
+          <div className="admin-table-container">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Group</th>
+                  <th>Join Code</th>
+                  <th>Members</th>
+                  <th>Messages</th>
+                  <th>Latest</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(overview?.recentGroups ?? []).map((group) => (
+                  <tr key={group.id}>
+                    <td>{group.name}</td>
+                    <td style={{ fontWeight: 600 }}>{group.joinCode}</td>
+                    <td>{group.activeMembersCount}/{group.membersCount}</td>
+                    <td>{group.messagesCount}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>
+                      {group.latestMessage ? formatDate(group.latestMessage.createdAt) : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );

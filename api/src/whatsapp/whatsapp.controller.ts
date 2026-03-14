@@ -43,6 +43,11 @@ export class WhatsAppController {
     return this.whatsAppService.listGroups();
   }
 
+  @Get('admin/overview')
+  async getAdminOverview() {
+    return this.whatsAppService.getAdminOverview();
+  }
+
   @Post('groups')
   async createGroup(@Body() dto: CreateGroupDto) {
     return this.whatsAppService.createGroup(dto);

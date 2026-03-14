@@ -20,6 +20,9 @@ async function request(method, path, body) {
 export const getGroups = () =>
   request('GET', '/whatsapp/groups');
 
+export const getAdminOverview = () =>
+  request('GET', '/whatsapp/admin/overview');
+
 export const createGroup = (name, ownerPhone, ownerName, memberPhones = []) =>
   request('POST', '/whatsapp/groups', { name, ownerPhone, ownerName, memberPhones });
 

@@ -315,6 +315,132 @@ export class WhatsAppService {
     });
   }
 
+  async getAdminOverview() {
+    const [
+      totalUsers,
+      totalGroups,
+      totalMessages,
+      activeMembers,
+      recentUsers,
+      recentMessages,
+      recentGroups,
+    ] = await this.prisma.$transaction([
+      this.prisma.user.count(),
+      this.prisma.whatsAppGroup.count(),
+      this.prisma.whatsAppGroupMessage.count(),
+      this.prisma.whatsAppGroupMember.count({
+        where: { status: WhatsAppGroupMemberStatus.ACTIVE },
+      }),
+      this.prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: {
+          id: true,
+          phone: true,
+          name: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.whatsAppGroupMessage.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: {
+          id: true,
+          body: true,
+          senderPhone: true,
+          createdAt: true,
+          group: {
+            select: {
+              id: true,
+              name: true,
+              joinCode: true,
+            },
+          },
+          senderUser: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+            },
+          },
+        },
+      }),
+      this.prisma.whatsAppGroup.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: {
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+            },
+          },
+          members: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              phone: true,
+              status: true,
+              joinedAt: true,
+              createdAt: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  phone: true,
+                },
+              },
+            },
+          },
+          messages: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              body: true,
+              senderPhone: true,
+              createdAt: true,
+            },
+          },
+          _count: {
+            select: {
+              messages: true,
+              members: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      metrics: {
+        totalUsers,
+        totalGroups,
+        totalMessages,
+        activeMembers,
+      },
+      recentUsers,
+      recentMessages,
+      recentGroups: recentGroups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        joinCode: group.joinCode,
+        conversationSid: group.conversationSid,
+        chatbotEnabled: group.chatbotEnabled,
+        createdAt: group.createdAt,
+        owner: group.owner,
+        members: group.members,
+        membersCount: group._count.members,
+        activeMembersCount: group.members.filter(
+          (member) => member.status === WhatsAppGroupMemberStatus.ACTIVE,
+        ).length,
+        messagesCount: group._count.messages,
+        latestMessage: group.messages[0] ?? null,
+      })),
+    };
+  }
+
   // ─── Join / Leave via Conversations API ───────────────────────────────
 
   private async joinConversation(
