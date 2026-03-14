@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package agent;
+
+service AgentService {
+  // Compose a natural-language reply given the user message and tool output.
+  rpc Chat(ChatRequest) returns (ChatResponse);
+}
+
+message ChatRequest {
+  string user_message  = 1;  // raw user input
+  string tool_context  = 2;  // serialized output from the scraper tool
+}
+
+message ChatResponse {
+  string reply = 1;
+}

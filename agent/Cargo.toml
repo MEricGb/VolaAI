@@ -1,0 +1,18 @@
+[package]
+name = "agent"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rig-core           = "0.32.0"
+tokio              = { version = "1", features = ["full"] }
+tonic              = { version = "0.12", features = ["transport"] }
+prost              = "0.13"
+anyhow             = "1"
+dotenvy            = "0.15"
+thiserror          = "2"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[build-dependencies]
+tonic-build = "0.12"
