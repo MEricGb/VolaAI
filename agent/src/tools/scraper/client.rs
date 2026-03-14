@@ -34,6 +34,7 @@ impl ScraperClient {
     }
 
     /// Send a structured search request to the scraper and return the response.
+    #[allow(clippy::too_many_arguments)]
     pub async fn search(
         &self,
         origin: String,
