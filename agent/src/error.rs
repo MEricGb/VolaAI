@@ -5,11 +5,11 @@
 pub enum AppError {
     /// gRPC status error from the scraper service.
     #[error("Scraper gRPC error: {0}")]
-    Scraper(#[from] tonic::Status),
+    Scraper(Box<tonic::Status>),
 
     /// Transport-level error connecting to scraper.
     #[error("Transport error: {0}")]
-    Transport(#[from] tonic::transport::Error),
+    Transport(Box<tonic::transport::Error>),
 
     /// LLM provider error.
     #[error("LLM error: {0}")]
@@ -22,6 +22,18 @@ pub enum AppError {
     /// Scraper returned a well-formed response but the oneof result field was unset.
     #[error("Unexpected response from scraper: missing result field")]
     UnexpectedResponse,
+}
+
+impl From<tonic::Status> for AppError {
+    fn from(value: tonic::Status) -> Self {
+        Self::Scraper(Box::new(value))
+    }
+}
+
+impl From<tonic::transport::Error> for AppError {
+    fn from(value: tonic::transport::Error) -> Self {
+        Self::Transport(Box::new(value))
+    }
 }
 
 impl From<AppError> for tonic::Status {

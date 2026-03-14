@@ -16,7 +16,9 @@ use tracing::{info, instrument};
 use crate::{
     config::Config,
     error::AppError,
+    tools::OcrTool,
     tools::ScraperTool,
+    tools::ocr::client::OcrClient,
     tools::scraper::client::ScraperClient,
 };
 
@@ -24,6 +26,7 @@ use crate::{
 pub struct OrchestrationEngine {
     config: Arc<Config>,
     scraper_client: Arc<ScraperClient>,
+    ocr_client: Arc<OcrClient>,
 }
 
 impl OrchestrationEngine {
@@ -32,7 +35,12 @@ impl OrchestrationEngine {
         let scraper_client = Arc::new(
             ScraperClient::connect(config.scraper_grpc_url.clone())?,
         );
-        Ok(Self { config, scraper_client })
+        let ocr_client = Arc::new(OcrClient::connect(config.ocr_grpc_url.clone())?);
+        Ok(Self {
+            config,
+            scraper_client,
+            ocr_client,
+        })
     }
 
     /// Process a user message through the orchestrator.
@@ -57,6 +65,7 @@ impl OrchestrationEngine {
             .agent(&self.config.featherless_model)
             .preamble(&preamble::build())
             .tool(ScraperTool::new(Arc::clone(&self.scraper_client)))
+            .tool(OcrTool::new(Arc::clone(&self.ocr_client)))
             .build();
 
         let reply = agent

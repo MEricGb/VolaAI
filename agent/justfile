@@ -19,10 +19,13 @@ start-release:
     cargo run --release
 
 # Send a test prompt to the running agent (requires grpcurl + server running via `just start`)
-prompt message session="test":
+# Optional image path usage:
+#   just prompt "compare this booking" image="/abs/path/to/ticket.jpg"
+prompt message session="test" image="":
+    payload=$$(SESSION="{{session}}" MESSAGE="{{message}}" IMAGE="{{image}}" python3 -c 'import json, os; m=os.environ["MESSAGE"]; i=os.environ["IMAGE"]; m=f"{m}\n[image_path={i}]" if i else m; print(json.dumps({"session_id": os.environ["SESSION"], "user_message": m}))'); \
     grpcurl -plaintext \
         -proto proto/agent.proto \
-        -d "{\"session_id\":\"{{session}}\",\"user_message\":\"{{message}}\"}" \
+        -d "$$payload" \
         '[::1]:50052' \
         agent.AgentService/Chat
 

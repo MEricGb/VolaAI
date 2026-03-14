@@ -1,0 +1,29 @@
+venv := ".venv"
+python := venv + "/bin/python"
+pip := venv + "/bin/pip"
+
+# Set up venv, install deps, generate proto stubs
+setup:
+    python3 -m venv {{venv}}
+    {{pip}} install --upgrade pip
+    {{pip}} install -r requirements.txt
+    {{python}} -m grpc_tools.protoc \
+        -I proto \
+        --python_out=generated \
+        --grpc_python_out=generated \
+        proto/ocr.proto
+
+# Regenerate proto stubs only
+proto:
+    {{python}} -m grpc_tools.protoc \
+        -I proto \
+        --python_out=generated \
+        --grpc_python_out=generated \
+        proto/ocr.proto
+
+# Start the gRPC server
+start:
+    {{python}} server.py
+
+# Setup then start
+run: setup start
