@@ -1,36 +1,64 @@
+/* ─── Vola.ro-inspired Design Tokens ──────────────────────── */
 :root {
-  --font-family: 'Outfit', system-ui, -apple-system, sans-serif;
-  --bg-primary: #f4f5f7;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Sora', system-ui, sans-serif;
+
+  /* Backgrounds */
+  --bg-primary: #f4f6fb;
   --bg-surface: #ffffff;
-  --text-primary: #1a1f36;
-  --text-secondary: #4f566b;
-  --color-primary: #0056FF; /* Vola-style Blue */
-  --color-primary-hover: #0044cc;
-  --color-accent: #FFB700; /* Vola-style Yellow */
-  --color-accent-hover: #e0a100;
-  
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.1);
-  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
-  
-  --radius-md: 0.5rem;
-  --radius-lg: 1rem;
-  --radius-xl: 1.5rem;
+  --bg-card: #ffffff;
+
+  /* Text */
+  --text-primary: #2a354a;
+  --text-secondary: #6c7689;
+  --text-muted: #9199ac;
+
+  /* Brand Blues */
+  --color-primary: #275cbd;
+  --color-primary-hover: #1e4ea6;
+  --hero-gradient: linear-gradient(112.44deg, #1681da 45.41%, #41beff 100%);
+
+  /* Yellow CTA */
+  --color-cta: #ffc52a;
+  --color-cta-hover: #f0b820;
+  --color-cta-text: #1a2236;
+
+  /* Borders */
+  --border: #e2e8ef;
+  --border-light: rgba(255, 255, 255, 0.25);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 4px rgba(39, 92, 189, 0.08);
+  --shadow-md: 0 4px 16px rgba(39, 92, 189, 0.10);
+  --shadow-lg: 0 12px 40px rgba(39, 92, 189, 0.14);
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-pill: 9999px;
 }
 
-* {
+/* ─── Reset ────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  font-family: var(--font-family);
+  font-family: var(--font-body);
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  line-height: 1.5;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
@@ -41,98 +69,138 @@ a {
 button {
   cursor: pointer;
   border: none;
-  font-family: var(--font-family);
+  font-family: var(--font-body);
 }
 
-/* Typography Utilities */
-h1 { font-size: 3rem; font-weight: 700; line-height: 1.1; margin-bottom: 1rem; }
-h2 { font-size: 2.25rem; font-weight: 600; line-height: 1.2; margin-bottom: 1rem; }
-h3 { font-size: 1.5rem; font-weight: 600; line-height: 1.3; margin-bottom: 0.5rem; }
-p { margin-bottom: 1rem; color: var(--text-secondary); }
+/* ─── Typography ───────────────────────────────────────────── */
+h1 {
+  font-family: var(--font-display);
+  font-size: 2.75rem;
+  font-weight: 800;
+  line-height: 1.08;
+  margin-bottom: 1rem;
+  color: var(--text-primary);
+  letter-spacing: -0.03em;
+}
 
-/* Layout Utilities */
+h2 {
+  font-family: var(--font-display);
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.15;
+  margin-bottom: 1rem;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+p {
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+/* ─── Layout ───────────────────────────────────────────────── */
 .container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 1.5rem;
 }
 
-/* Glassmorphism */
-.glass {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  box-shadow: var(--shadow-sm);
-}
-
-.glass-dark {
-  background: rgba(4, 9, 33, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
-}
-
-/* Buttons */
+/* ─── Buttons ──────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.5rem;
   padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  font-weight: 600;
-  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
   transition: all 0.2s ease;
 }
 
 .btn-primary {
-  background-color: var(--color-primary);
+  background: var(--color-primary);
   color: white;
 }
 
 .btn-primary:hover {
-  background-color: var(--color-primary-hover);
+  background: var(--color-primary-hover);
   transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
-.btn-accent {
-  background-color: var(--color-accent);
-  color: #000;
+.btn-cta {
+  background: var(--color-cta);
+  color: var(--color-cta-text);
 }
 
-.btn-accent:hover {
-  background-color: var(--color-accent-hover);
+.btn-cta:hover {
+  background: var(--color-cta-hover);
   transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(255, 197, 42, 0.4);
 }
 
-/* Animations */
+/* ─── Animations ───────────────────────────────────────────── */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
 
-.animate-fade-up {
-  animation: fadeUp 0.6s ease-out forwards;
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes typing {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .typing-dot {
   width: 6px;
   height: 6px;
-  background-color: var(--text-secondary);
+  background: #81868d;
   border-radius: 50%;
   animation: typing 1s infinite;
 }
-.typing-dot:nth-child(2) { animation-delay: 0.2s; }
-.typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
-/* Responsive adjustments */
+.typing-dot:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+/* ─── Responsive typography ────────────────────────────────── */
 @media (max-width: 768px) {
-  h1 { font-size: 2.25rem; }
-  h2 { font-size: 1.75rem; }
+  h1 {
+    font-size: 2rem;
+  }
+
+  h2 {
+    font-size: 1.75rem;
+  }
 }
