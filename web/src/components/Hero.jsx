@@ -2,11 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Send, MessageCircle } from 'lucide-react';
 import '../App.css';
 
-const WA_NUMBER = import.meta.env.VITE_WHATSAPP_NUMBER ?? '14155238886';
-const waLink = (text) =>
-  `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(text)}`;
+const waLink = (number, text) =>
+  `https://wa.me/${number.replace(/^\+/, '')}?text=${encodeURIComponent(text)}`;
 
-const Hero = () => {
+const Hero = ({ whatsAppNumber }) => {
   const [messages, setMessages] = useState([
     { text: "Hi! Where would you like to travel today?", user: false },
   ]);
@@ -126,10 +125,16 @@ const Hero = () => {
 
         <div className="cta-box">
           <a
-            href={waLink("Hi! I'd like to plan a trip.")}
+            href={whatsAppNumber ? waLink(whatsAppNumber, "Hi! I'd like to plan a trip.") : '#'}
             target="_blank"
             rel="noreferrer"
             className="btn-whatsapp"
+            aria-disabled={!whatsAppNumber}
+            onClick={(event) => {
+              if (!whatsAppNumber) {
+                event.preventDefault();
+              }
+            }}
           >
             <MessageCircle size={20} />
             Start planning on WhatsApp
@@ -145,10 +150,16 @@ const Hero = () => {
               ].map((prompt) => (
                 <a
                   key={prompt}
-                  href={waLink(prompt)}
+                  href={whatsAppNumber ? waLink(whatsAppNumber, prompt) : '#'}
                   target="_blank"
                   rel="noreferrer"
                   className="prompt-pill"
+                  aria-disabled={!whatsAppNumber}
+                  onClick={(event) => {
+                    if (!whatsAppNumber) {
+                      event.preventDefault();
+                    }
+                  }}
                 >
                   "{prompt}"
                 </a>

@@ -134,6 +134,12 @@ export class WhatsAppService {
     return { body: modifiedBody };
   }
 
+  getPublicConfig() {
+    return {
+      whatsappNumber: this.twilioWhatsAppNumber?.replace(/^whatsapp:/, '') ?? null,
+    };
+  }
+
   // ─── Group CRUD ───────────────────────────────────────────────────────
 
   async createGroup(dto: CreateGroupDto) {

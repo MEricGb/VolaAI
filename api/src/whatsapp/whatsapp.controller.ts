@@ -43,6 +43,11 @@ export class WhatsAppController {
     return this.whatsAppService.listGroups();
   }
 
+  @Get('public-config')
+  async getPublicConfig() {
+    return this.whatsAppService.getPublicConfig();
+  }
+
   @Get('admin/overview')
   async getAdminOverview() {
     return this.whatsAppService.getAdminOverview();

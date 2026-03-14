@@ -1,4 +1,4 @@
-const BASE = '/api';
+const BASE = import.meta.env.VITE_API_URL ?? '/api';
 
 async function request(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
@@ -19,6 +19,9 @@ async function request(method, path, body) {
 
 export const getGroups = () =>
   request('GET', '/whatsapp/groups');
+
+export const getPublicConfig = () =>
+  request('GET', '/whatsapp/public-config');
 
 export const getAdminOverview = () =>
   request('GET', '/whatsapp/admin/overview');
