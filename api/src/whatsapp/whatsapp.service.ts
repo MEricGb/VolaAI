@@ -81,13 +81,19 @@ export class WhatsAppService {
     // and handled by handleConversationPreEvent for the whole group.
     const activeMembership = await this.prisma.whatsAppGroupMember.findFirst({
       where: { phone: from, status: WhatsAppGroupMemberStatus.ACTIVE },
+      include: { group: true },
     });
 
     if (activeMembership) {
-      // Return empty response to let Twilio Conversations handle the relay without an echo reply
+      const group = (activeMembership as any).group;
+      this.logger.log(`User ${from} is in active group: "${group?.name || 'Unknown'}"`);
+      this.logger.log(`Active ConversationSid: ${group?.conversationSid || 'None'}`);
+      this.logger.log(`Using MessagingServiceSid: ${this.messageServiceSid}`);
+      this.logger.log('Skipping direct reply to let Group AI handle it.');
       return '';
     }
 
+    this.logger.log(`User ${from} not in active group. Falling back to 1-to-1 AI.`);
     // Default: Forward to AI Agent for 1-to-1 chat
     try {
       const reply = await this.agentService.chat(profileName || from.replace('whatsapp:', ''), body);
@@ -103,6 +109,8 @@ export class WhatsAppService {
   // ─── Conversations pre-event webhook (onMessageAdd) ───────────────────
 
   async handleConversationPreEvent(dto: ConversationPreEventDto) {
+    this.logger.log(`Conversation Event [${dto.EventType}] from ${dto.Author}`);
+
     if (dto.EventType !== 'onMessageAdd') {
       return { body: dto.Body };
     }
@@ -115,6 +123,8 @@ export class WhatsAppService {
     // Look up sender display name from Sync Map (our DB)
     const senderName = await this.getSenderName(dto.Author);
     const modifiedBody = `*${senderName}*: ${dto.Body}`;
+
+    this.logger.log(`Triggering AI for group message: "${dto.Body}" (Author: ${senderName})`);
 
     // Trigger chatbot response asynchronously (don't block the webhook)
     this.triggerChatbotReply(dto.ConversationSid, dto.Body, senderName).catch(
@@ -451,6 +461,7 @@ export class WhatsAppService {
       const conversation =
         await this.client.conversations.v1.conversations.create({
           friendlyName,
+          messagingServiceSid: this.messageServiceSid || undefined,
         });
       this.logger.log(`Created Conversation ${conversation.sid}`);
       return conversation.sid;

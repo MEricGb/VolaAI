@@ -33,6 +33,8 @@ export class WhatsAppController {
   @Post('conversations/pre-event')
   @HttpCode(200)
   async handleConversationPreEvent(@Body() dto: ConversationPreEventDto) {
+    console.log('--- CONVERSATION WEBHOOK RECEIVED ---');
+    console.log('Payload:', JSON.stringify(dto, null, 2));
     return this.whatsAppService.handleConversationPreEvent(dto);
   }
 
