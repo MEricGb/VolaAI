@@ -24,25 +24,19 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0escraping.proto\x12\x08scraping\"9\n\rSearchRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x14\n\x0cuser_message\x18\x02 \x01(\t\"\xaa\x01\n\x0eSearchResponse\x12*\n\x07\x66lights\x18\x01 \x01(\x0b\x32\x17.scraping.FlightResultsH\x00\x12\x36\n\rclarification\x18\x02 \x01(\x0b\x32\x1d.scraping.ClarificationNeededH\x00\x12*\n\tno_search\x18\x03 \x01(\x0b\x32\x15.scraping.NoSearchYetH\x00\x42\x08\n\x06result\"6\n\rFlightResults\x12%\n\x06offers\x18\x01 \x03(\x0b\x32\x15.scraping.FlightOffer\"\xe5\x01\n\x0b\x46lightOffer\x12\x10\n\x08offer_id\x18\x01 \x01(\t\x12\x0e\n\x06origin\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65stination\x18\x03 \x01(\t\x12\x13\n\x0b\x64\x65part_date\x18\x04 \x01(\t\x12\x13\n\x0breturn_date\x18\x05 \x01(\t\x12\x11\n\tprice_eur\x18\x06 \x01(\x02\x12\x0f\n\x07\x61irline\x18\x07 \x01(\t\x12\x15\n\rflight_number\x18\x08 \x01(\t\x12\x18\n\x10\x64uration_minutes\x18\t \x01(\x05\x12\r\n\x05stops\x18\n \x01(\x05\x12\x11\n\tdeep_link\x18\x0b \x01(\t\"?\n\x13\x43larificationNeeded\x12\x10\n\x08question\x18\x01 \x01(\t\x12\x16\n\x0emissing_fields\x18\x02 \x03(\t\"\x1d\n\x0bNoSearchYet\x12\x0e\n\x06reason\x18\x01 \x01(\t2U\n\x0fScrapingService\x12\x42\n\rSearchFlights\x12\x17.scraping.SearchRequest\x1a\x18.scraping.SearchResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0escraping.proto\x12\x08scraping\"\x94\x01\n\rSearchRequest\x12\x0e\n\x06origin\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65stination\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65part_date\x18\x03 \x01(\t\x12\x13\n\x0breturn_date\x18\x04 \x01(\t\x12\x0e\n\x06\x61\x64ults\x18\x05 \x01(\x05\x12\x10\n\x08\x63hildren\x18\x06 \x01(\x05\x12\x12\n\nis_one_way\x18\x07 \x01(\x08\"7\n\x0eSearchResponse\x12%\n\x06offers\x18\x01 \x03(\x0b\x32\x15.scraping.FlightOffer\"\xe5\x01\n\x0b\x46lightOffer\x12\x10\n\x08offer_id\x18\x01 \x01(\t\x12\x0e\n\x06origin\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65stination\x18\x03 \x01(\t\x12\x13\n\x0b\x64\x65part_date\x18\x04 \x01(\t\x12\x13\n\x0breturn_date\x18\x05 \x01(\t\x12\x11\n\tprice_eur\x18\x06 \x01(\x02\x12\x0f\n\x07\x61irline\x18\x07 \x01(\t\x12\x15\n\rflight_number\x18\x08 \x01(\t\x12\x18\n\x10\x64uration_minutes\x18\t \x01(\x05\x12\r\n\x05stops\x18\n \x01(\x05\x12\x11\n\tdeep_link\x18\x0b \x01(\t2U\n\x0fScrapingService\x12\x42\n\rSearchFlights\x12\x17.scraping.SearchRequest\x1a\x18.scraping.SearchResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'scraping_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_SEARCHREQUEST']._serialized_start=28
-  _globals['_SEARCHREQUEST']._serialized_end=85
-  _globals['_SEARCHRESPONSE']._serialized_start=88
-  _globals['_SEARCHRESPONSE']._serialized_end=258
-  _globals['_FLIGHTRESULTS']._serialized_start=260
-  _globals['_FLIGHTRESULTS']._serialized_end=314
-  _globals['_FLIGHTOFFER']._serialized_start=317
-  _globals['_FLIGHTOFFER']._serialized_end=546
-  _globals['_CLARIFICATIONNEEDED']._serialized_start=548
-  _globals['_CLARIFICATIONNEEDED']._serialized_end=611
-  _globals['_NOSEARCHYET']._serialized_start=613
-  _globals['_NOSEARCHYET']._serialized_end=642
-  _globals['_SCRAPINGSERVICE']._serialized_start=644
-  _globals['_SCRAPINGSERVICE']._serialized_end=729
+  _globals['_SEARCHREQUEST']._serialized_start=29
+  _globals['_SEARCHREQUEST']._serialized_end=177
+  _globals['_SEARCHRESPONSE']._serialized_start=179
+  _globals['_SEARCHRESPONSE']._serialized_end=234
+  _globals['_FLIGHTOFFER']._serialized_start=237
+  _globals['_FLIGHTOFFER']._serialized_end=466
+  _globals['_SCRAPINGSERVICE']._serialized_start=468
+  _globals['_SCRAPINGSERVICE']._serialized_end=553
 # @@protoc_insertion_point(module_scope)

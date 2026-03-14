@@ -1,20 +1,14 @@
 """
-server.py — gRPC server wrapping the Vola flight-search assistant.
+server.py — gRPC server for the Vola flight-search service.
+
+Receives fully-resolved search parameters from the Rust agent's LLM
+and delegates directly to VolaClient. No NLP or session state here.
 
 Run:
     python server.py
-
-Generate proto stubs first (one-time):
-    pip install grpcio-tools
-    python -m grpc_tools.protoc \
-        -I proto \
-        --python_out=generated \
-        --grpc_python_out=generated \
-        proto/scraping.proto
 """
 
 import sys
-import json
 import logging
 from concurrent import futures
 from datetime import date
@@ -25,8 +19,6 @@ sys.path.insert(0, "generated")
 import scraping_pb2
 import scraping_pb2_grpc
 
-from context_manager import ContextManager
-from planner import Planner, PlannerAction
 from vola_client import VolaClient
 from models import TravelContext
 
@@ -37,89 +29,78 @@ GRPC_PORT = 50051
 
 
 class ScrapingServicer(scraping_pb2_grpc.ScrapingServiceServicer):
-    """
-    Stateful gRPC servicer. Each session_id gets its own ContextManager
-    so context accumulates across conversation turns.
-    """
+    """Stateless gRPC servicer. Receives structured params, calls Vola, returns offers."""
 
     def __init__(self):
-        self._sessions: dict[str, ContextManager] = {}
-        self._planner = Planner()
         self._vola = VolaClient(use_mock=False)
 
-    def _get_session(self, session_id: str) -> ContextManager:
-        if session_id not in self._sessions:
-            log.info("New session: %s", session_id)
-            self._sessions[session_id] = ContextManager()
-        return self._sessions[session_id]
-
     def SearchFlights(self, request, context):
-        session_id = request.session_id
-        user_message = request.user_message
-
-        log.info("[%s] user_message=%r", session_id, user_message)
-
-        ctx_mgr = self._get_session(session_id)
-
-        # ── Update context from message ──────────────────────────────────────
-        travel_ctx = ctx_mgr.update(user_message)
-
-        # ── Ask planner what to do ───────────────────────────────────────────
-        result = self._planner.decide(travel_ctx, last_message=user_message)
-        log.info("[%s] planner=%s reason=%s", session_id, result.action.value, result.reason)
-
-        # ── SEARCH_NOW ───────────────────────────────────────────────────────
-        if result.action == PlannerAction.SEARCH_NOW:
-            try:
-                if travel_ctx.is_one_way:
-                    offers = self._vola.search_one_way(travel_ctx)
-                else:
-                    offers = self._vola.search_round_trip(travel_ctx)
-            except Exception as exc:
-                log.error("[%s] Vola search failed: %s", session_id, exc)
-                context.set_code(grpc.StatusCode.INTERNAL)
-                context.set_details(f"Flight search failed: {exc}")
-                return scraping_pb2.SearchResponse()
-
-            proto_offers = [
-                scraping_pb2.FlightOffer(
-                    offer_id=o.offer_id,
-                    origin=o.origin,
-                    destination=o.destination,
-                    depart_date=o.depart_date,
-                    return_date=o.return_date or "",
-                    price_eur=o.price_eur,
-                    airline=o.airline,
-                    flight_number=o.flight_number,
-                    duration_minutes=o.duration_minutes,
-                    stops=o.stops,
-                    deep_link=o.deep_link,
-                )
-                for o in offers
-            ]
-
-            ctx_mgr.add_assistant_message(
-                f"Found {len(offers)} offers. "
-                + (f"Cheapest: {min(offers, key=lambda o: o.price_eur).formatted_price()}" if offers else "No offers.")
-            )
-
-            return scraping_pb2.SearchResponse(
-                flights=scraping_pb2.FlightResults(offers=proto_offers)
-            )
-
-        # ── ASK_CLARIFICATION ────────────────────────────────────────────────
-        if result.action == PlannerAction.ASK_CLARIFICATION:
-            return scraping_pb2.SearchResponse(
-                clarification=scraping_pb2.ClarificationNeeded(
-                    question=result.clarification_question or "",
-                    missing_fields=travel_ctx.missing_fields(),
-                )
-            )
-
-        # ── NO_SEARCH_YET ────────────────────────────────────────────────────
-        return scraping_pb2.SearchResponse(
-            no_search=scraping_pb2.NoSearchYet(reason=result.reason)
+        log.info(
+            "SearchFlights received: %s→%s depart=%s return=%s adults=%d children=%d one_way=%s",
+            request.origin,
+            request.destination,
+            request.depart_date,
+            request.return_date or "—",
+            request.adults or 1,
+            request.children,
+            request.is_one_way,
         )
+
+        try:
+            travel_ctx = TravelContext(
+                origin=request.origin,
+                destination=request.destination,
+                depart_date=date.fromisoformat(request.depart_date),
+                return_date=(
+                    date.fromisoformat(request.return_date)
+                    if request.return_date else None
+                ),
+                adults=request.adults if request.adults > 0 else 1,
+                children=request.children,
+                is_one_way=request.is_one_way,
+            )
+        except (ValueError, AttributeError) as exc:
+            log.error("Invalid request params: %s", exc)
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(f"Invalid search parameters: {exc}")
+            return scraping_pb2.SearchResponse()
+
+        log.info("Calling Vola API (%s)...", "one-way" if travel_ctx.is_one_way else "round-trip")
+
+        try:
+            if travel_ctx.is_one_way:
+                offers = self._vola.search_one_way(travel_ctx)
+            else:
+                offers = self._vola.search_round_trip(travel_ctx)
+        except Exception as exc:
+            log.error("Vola search failed: %s", exc)
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"Flight search failed: {exc}")
+            return scraping_pb2.SearchResponse()
+
+        if offers:
+            log.info("Vola returned %d offer(s); cheapest=€%.2f", len(offers), min(o.price_eur for o in offers))
+        else:
+            log.info("Vola returned 0 offers")
+
+        proto_offers = [
+            scraping_pb2.FlightOffer(
+                offer_id=o.offer_id,
+                origin=o.origin,
+                destination=o.destination,
+                depart_date=o.depart_date,
+                return_date=o.return_date or "",
+                price_eur=o.price_eur,
+                airline=o.airline,
+                flight_number=o.flight_number,
+                duration_minutes=o.duration_minutes,
+                stops=o.stops,
+                deep_link=o.deep_link,
+            )
+            for o in offers
+        ]
+
+        return scraping_pb2.SearchResponse(offers=proto_offers)
 
 
 def serve():
