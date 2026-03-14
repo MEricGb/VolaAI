@@ -2,7 +2,7 @@
 //!
 //! The LLM calls this tool when it decides the user's message requires a
 //! flight search. It delegates to [`ScraperClient`] over gRPC and returns
-//! a human-readable summary of the scraper's response.
+//! a human-readable summary of the results.
 
 pub mod client;
 
@@ -12,26 +12,24 @@ use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
-use client::{scraping_proto::search_response::Result as ScraperResult, ScraperClient};
+use client::ScraperClient;
 
-/// Arguments the LLM passes when invoking the search_flights tool.
+/// Arguments the LLM fills when invoking the search_flights tool.
 #[derive(Debug, Deserialize)]
 pub struct SearchFlightsArgs {
-    pub session_id: String,
-    pub user_message: String,
+    pub origin: String,
+    pub destination: String,
+    pub depart_date: String,
+    pub return_date: Option<String>,
+    pub adults: Option<u32>,
+    pub children: Option<u32>,
+    pub is_one_way: Option<bool>,
 }
 
 /// Serializable output returned to the LLM after tool execution.
 #[derive(Debug, Serialize)]
 pub struct SearchFlightsOutput {
     pub summary: String,
-}
-
-/// Errors that can occur during flight search tool execution.
-#[derive(Debug, thiserror::Error)]
-pub enum ScraperToolError {
-    #[error("Scraper call failed: {0}")]
-    Rpc(#[from] AppError),
 }
 
 /// rig tool that searches for flights by calling the Python scraper service.
@@ -49,77 +47,122 @@ impl ScraperTool {
 impl Tool for ScraperTool {
     const NAME: &'static str = "search_flights";
 
-    type Error = ScraperToolError;
+    type Error = AppError;
     type Args = SearchFlightsArgs;
     type Output = SearchFlightsOutput;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Search for flights based on the user's travel request. \
-                          Call this whenever the user asks about flights, prices, \
-                          routes, or travel plans. Pass the session_id and the \
-                          user's exact message."
+            description: "Search for real flights via the Vola flight search engine. \
+                Call this tool whenever the user asks about flights, prices, routes, or travel. \
+                You MUST resolve city names to IATA codes before calling — use the reference below.\n\n\
+                City → IATA reference:\n\
+                bucharest/bucurești → OTP, cluj/cluj-napoca → CLJ, timișoara → TSR, \
+                iași/iasi → IAS, sibiu → SBZ, constanța → CND, târgu mureș → TGM, \
+                oradea → OMR, suceava → SCV, craiova → CRA, bacău → BCM, \
+                london → LHR, gatwick → LGW, luton → LTN, stansted → STN, \
+                manchester → MAN, edinburgh → EDI, birmingham → BHX, dublin → DUB, \
+                paris → CDG, orly → ORY, amsterdam → AMS, brussels → BRU, \
+                frankfurt → FRA, munich → MUC, berlin → BER, vienna → VIE, \
+                zurich → ZRH, geneva → GVA, milan → MXP, rome → FCO, venice → VCE, \
+                madrid → MAD, barcelona → BCN, valencia → VLC, malaga → AGP, \
+                lisbon → LIS, porto → OPO, stockholm → ARN, oslo → OSL, \
+                copenhagen → CPH, helsinki → HEL, prague → PRG, budapest → BUD, \
+                warsaw → WAW, sofia → SOF, belgrade → BEG, zagreb → ZAG, \
+                athens → ATH, istanbul → IST, antalya → AYT, dubai → DXB, \
+                tel aviv → TLV, cairo → CAI, new york → JFK, los angeles → LAX, \
+                miami → MIA, toronto → YYZ, montreal → YUL, tokyo → NRT, \
+                singapore → SIN, bangkok → BKK, bali → DPS, delhi → DEL, mumbai → BOM\n\n\
+                If only a month is given with no exact date, use the 1st of that month \
+                (e.g. 'June' → depart_date: '2026-06-01'). \
+                Default adults to 1 if not specified."
                 .to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "session_id": {
+                    "origin": {
                         "type": "string",
-                        "description": "The conversation session identifier"
+                        "description": "Departure airport IATA code (e.g. 'OTP')"
                     },
-                    "user_message": {
+                    "destination": {
                         "type": "string",
-                        "description": "The user's raw message requesting flight information"
+                        "description": "Arrival airport IATA code (e.g. 'BCN')"
+                    },
+                    "depart_date": {
+                        "type": "string",
+                        "description": "Departure date in YYYY-MM-DD format"
+                    },
+                    "return_date": {
+                        "type": "string",
+                        "description": "Return date in YYYY-MM-DD format, omit for one-way"
+                    },
+                    "adults": {
+                        "type": "integer",
+                        "description": "Number of adult passengers (default 1)"
+                    },
+                    "children": {
+                        "type": "integer",
+                        "description": "Number of child passengers (default 0)"
+                    },
+                    "is_one_way": {
+                        "type": "boolean",
+                        "description": "True for one-way, false/omit for round-trip"
                     }
                 },
-                "required": ["session_id", "user_message"]
+                "required": ["origin", "destination", "depart_date"]
             }),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        tracing::info!(
+            origin = %args.origin,
+            destination = %args.destination,
+            depart_date = %args.depart_date,
+            return_date = ?args.return_date,
+            adults = args.adults.unwrap_or(1),
+            is_one_way = args.is_one_way.unwrap_or(false),
+            "ScraperTool: calling scraper"
+        );
+
         let response = self
             .client
-            .search(args.session_id, args.user_message)
+            .search(
+                args.origin,
+                args.destination,
+                args.depart_date,
+                args.return_date.unwrap_or_default(),
+                args.adults.unwrap_or(1),
+                args.children.unwrap_or(0),
+                args.is_one_way.unwrap_or(false),
+            )
             .await?;
 
-        let summary = match response.result {
-            Some(ScraperResult::Flights(results)) => {
-                if results.offers.is_empty() {
-                    "No flights found for the given route and dates.".to_string()
-                } else {
-                    let lines: Vec<String> = results
-                        .offers
-                        .iter()
-                        .take(5)
-                        .map(|o| {
-                            format!(
-                                "{} → {} on {} | {} | €{:.2} | {} stops | {}min",
-                                o.origin,
-                                o.destination,
-                                o.depart_date,
-                                o.airline,
-                                o.price_eur,
-                                o.stops,
-                                o.duration_minutes,
-                            )
-                        })
-                        .collect();
-                    format!("Found {} flight(s):\n{}", results.offers.len(), lines.join("\n"))
-                }
-            }
-            Some(ScraperResult::Clarification(c)) => {
-                format!(
-                    "Need clarification — {}\nMissing: {}",
-                    c.question,
-                    c.missing_fields.join(", ")
-                )
-            }
-            Some(ScraperResult::NoSearch(ns)) => {
-                format!("No search triggered: {}", ns.reason)
-            }
-            None => return Err(ScraperToolError::Rpc(AppError::UnexpectedResponse)),
+        tracing::info!(count = response.offers.len(), "ScraperTool: received offers");
+
+        let summary = if response.offers.is_empty() {
+            "No flights found for the given route and dates.".to_string()
+        } else {
+            let lines: Vec<String> = response
+                .offers
+                .iter()
+                .take(5)
+                .map(|o| {
+                    format!(
+                        "{} → {} on {} | {} | €{:.2} | {} stop(s) | {}min | {}",
+                        o.origin,
+                        o.destination,
+                        o.depart_date,
+                        o.airline,
+                        o.price_eur,
+                        o.stops,
+                        o.duration_minutes,
+                        o.deep_link,
+                    )
+                })
+                .collect();
+            format!("Found {} flight(s):\n{}", response.offers.len(), lines.join("\n"))
         };
 
         Ok(SearchFlightsOutput { summary })

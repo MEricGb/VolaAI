@@ -23,6 +23,8 @@ model User {
   sentMessages  WhatsAppGroupMessage[]
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
+
+  @@map("users")
 }
 
 model WhatsAppGroup {
@@ -37,6 +39,8 @@ model WhatsAppGroup {
   messages         WhatsAppGroupMessage[]
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
+
+  @@map("whatsapp_groups")
 }
 
 model WhatsAppGroupMember {
@@ -55,6 +59,7 @@ model WhatsAppGroupMember {
 
   @@unique([groupId, phone])
   @@index([phone, status])
+  @@map("whatsapp_group_members")
 }
 
 model WhatsAppGroupMessage {
@@ -63,12 +68,10 @@ model WhatsAppGroupMessage {
   senderUserId     String?
   senderPhone      String
   body             String
-  sourceMessageSid String?          @unique
-  deliveredCount   Int              @default(0)
-  skippedCount     Int              @default(0)
   group            WhatsAppGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
   senderUser       User?            @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
   createdAt        DateTime         @default(now())
 
   @@index([groupId, createdAt])
+  @@map("whatsapp_group_messages")
 }

@@ -11,6 +11,7 @@ import twilio = require('twilio');
 import { PrismaService } from '../db/prisma.service';
 import { AddGroupMembersDto } from './dto/add-group-members.dto';
 import { CreateGroupDto } from './dto/create-group.dto';
+import { AgentService } from '../agent/agent.service';
 import { IncomingMessageDto } from './dto/incoming-message.dto';
 import { SendGroupMessageDto } from './dto/send-group-message.dto';
 import { ConversationPreEventDto } from './dto/conversation-pre-event.dto';
@@ -23,7 +24,10 @@ export class WhatsAppService {
   private readonly messageServiceSid: string | null;
   private readonly contentSid: string | null;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly agentService: AgentService,
+  ) {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     this.twilioWhatsAppNumber = this.normalizeWhatsAppAddress(
@@ -72,9 +76,28 @@ export class WhatsAppService {
       return this.buildTwiml(reply);
     }
 
-    return this.buildTwiml(
-      'Send JOIN <code> to join a group, or LEAVE <code> to leave one.',
-    );
+    // If user is already in an active group, we don't want to send a direct AI reply
+    // because any messages they send are automatically relayed to the conversation
+    // and handled by handleConversationPreEvent for the whole group.
+    const activeMembership = await this.prisma.whatsAppGroupMember.findFirst({
+      where: { phone: from, status: WhatsAppGroupMemberStatus.ACTIVE },
+    });
+
+    if (activeMembership) {
+      // Return empty response to let Twilio Conversations handle the relay without an echo reply
+      return '';
+    }
+
+    // Default: Forward to AI Agent for 1-to-1 chat
+    try {
+      const reply = await this.agentService.chat(profileName || from.replace('whatsapp:', ''), body);
+      return this.buildTwiml(reply);
+    } catch (err) {
+      this.logger.error('Agent gRPC call failed (1-to-1)', err);
+      return this.buildTwiml(
+        '⚠️ Our AI assistant is temporarily unavailable. Please try again shortly.',
+      );
+    }
   }
 
   // ─── Conversations pre-event webhook (onMessageAdd) ───────────────────
@@ -265,8 +288,6 @@ export class WhatsAppService {
         senderUserId: senderUser?.id,
         senderPhone,
         body: dto.body.trim(),
-        deliveredCount: 0, // Twilio handles delivery
-        skippedCount: 0,
       },
     });
 
@@ -381,7 +402,7 @@ export class WhatsAppService {
     return `You left ${memberships.length} groups.`;
   }
 
-  // ─── Mock Chatbot ─────────────────────────────────────────────────────
+  // ─── Agent AI Chatbot ───────────────────────────────────────────────────
 
   private async triggerChatbotReply(
     conversationSid: string,
@@ -396,7 +417,13 @@ export class WhatsAppService {
       return;
     }
 
-    const reply = this.generateMockReply(userMessage, senderName);
+    let reply = '';
+    try {
+      reply = await this.agentService.chat(senderName, userMessage);
+    } catch (err) {
+      this.logger.error('Agent gRPC call failed', err);
+      reply = '⚠️ Our AI assistant is temporarily unavailable. Please try again shortly.';
+    }
 
     await this.postConversationMessage(conversationSid, 'system', reply);
 
@@ -406,38 +433,8 @@ export class WhatsAppService {
         groupId: group.id,
         senderPhone: 'chatbot',
         body: reply,
-        deliveredCount: 0,
-        skippedCount: 0,
       },
     });
-  }
-
-  /**
-   * Mock LLM response — replace with real LLM service call later.
-   */
-  private generateMockReply(userMessage: string, senderName: string): string {
-    const lower = userMessage.toLowerCase();
-
-    if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
-      return `🤖 Hey ${senderName}! How can I help the group today?`;
-    }
-
-    if (lower.includes('help')) {
-      return [
-        '🤖 Here are some things I can help with:',
-        '• Answer questions about the group',
-        '• Provide information and summaries',
-        '• Help coordinate group activities',
-        '',
-        '_This is a mock response. Real AI coming soon!_',
-      ].join('\n');
-    }
-
-    if (lower.includes('?')) {
-      return `🤖 Great question, ${senderName}! I'm still learning, but I'll be able to help with that soon. _[Mock response]_`;
-    }
-
-    return `🤖 Thanks for your message, ${senderName}. I'm a mock chatbot for now — real AI responses coming soon! _[Mock response]_`;
   }
 
   // ─── Twilio Conversations API helpers ─────────────────────────────────

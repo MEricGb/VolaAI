@@ -8,18 +8,18 @@ setup:
     {{pip}} install --upgrade pip
     {{pip}} install -r requirements.txt
     {{python}} -m grpc_tools.protoc \
-        -I proto \
+        -I ../proto \
         --python_out=generated \
         --grpc_python_out=generated \
-        proto/scraping.proto
+        ../proto/scraping.proto
 
 # Regenerate proto stubs only
 proto:
     {{python}} -m grpc_tools.protoc \
-        -I proto \
+        -I ../proto \
         --python_out=generated \
         --grpc_python_out=generated \
-        proto/scraping.proto
+        ../proto/scraping.proto
 
 # Start the gRPC server
 start:

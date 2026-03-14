@@ -1,2 +1,6 @@
 grpcio
 grpcio-tools
+pytesseract
+pillow
+openai
+python-dotenv

@@ -18,12 +18,6 @@ use client::OcrClient;
 pub struct ExtractBookingArgs {
     pub session_id: String,
     pub image_path: String,
-    #[serde(default = "default_ocr_backend")]
-    pub ocr_backend: String,
-}
-
-fn default_ocr_backend() -> String {
-    "mock".to_string()
 }
 
 /// Serializable output returned to the LLM after tool execution.
@@ -62,8 +56,9 @@ impl Tool for OcrTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Extract structured booking details from a travel screenshot image path. \
-                          Call this when the user shares an image path or asks to parse OCR from a booking screenshot."
+            description: "Extract structured booking details from a travel confirmation screenshot \
+                          such as a plane ticket, hotel reservation, or itinerary. Use this when \
+                          the image looks like a document or booking confirmation rather than a scenic photo."
                 .to_string(),
             parameters: serde_json::json!({
                 "type": "object",
@@ -75,11 +70,6 @@ impl Tool for OcrTool {
                     "image_path": {
                         "type": "string",
                         "description": "Absolute or relative path to the booking screenshot image"
-                    },
-                    "ocr_backend": {
-                        "type": "string",
-                        "description": "OCR backend to use (mock, tesseract, google, openai, featherless)",
-                        "default": "mock"
                     }
                 },
                 "required": ["session_id", "image_path"]
@@ -90,7 +80,7 @@ impl Tool for OcrTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let response = self
             .client
-            .extract_booking_info(args.session_id, args.image_path, args.ocr_backend)
+            .extract_booking_info(args.session_id, args.image_path, "featherless".to_string())
             .await?;
 
         if !response.success {
