@@ -6,5 +6,7 @@
 //! 3. Register it in `orchestrator/mod.rs` via `.tool()`
 
 pub mod scraper;
+pub mod ocr;
 
 pub use scraper::ScraperTool;
+pub use ocr::OcrTool;

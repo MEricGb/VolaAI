@@ -11,6 +11,7 @@ pub struct Config {
     pub featherless_model:    String,
     pub grpc_port:            u16,
     pub scraper_grpc_url:     String,
+    pub ocr_grpc_url:         String,
 }
 
 impl Config {
@@ -32,6 +33,9 @@ impl Config {
 
             scraper_grpc_url: std::env::var("SCRAPER_GRPC_URL")
                 .unwrap_or_else(|_| "http://[::1]:50051".to_string()),
+
+            ocr_grpc_url: std::env::var("OCR_GRPC_URL")
+                .unwrap_or_else(|_| "http://[::1]:50053".to_string()),
         })
     }
 }
