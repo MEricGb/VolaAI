@@ -21,13 +21,23 @@ start-release:
 # Send a test prompt to the running agent (requires grpcurl + server running via `just start`)
 # Optional image path usage:
 #   just prompt "compare this booking" image="/abs/path/to/ticket.jpg"
-prompt message session="test" image="":
-    SESSION="{{session}}" MESSAGE="{{message}}" IMAGE="{{image}}" python3 -c 'import json, os, pathlib; message = os.environ["MESSAGE"]; image = os.environ.get("IMAGE", ""); message = f"{message}\n[image_path={image}]" if image else message; pathlib.Path("/tmp/agent_prompt_payload.json").write_text(json.dumps({"session_id": os.environ["SESSION"], "user_message": message}))'
-    grpcurl -plaintext \
-        -proto proto/agent.proto \
+prompt message image="" session="test":
+    python3 -c "import json, sys; msg='{{message}}'; img='{{image}}'; full=msg+'\n[image_path='+img+']' if img else msg; print(json.dumps({'session_id':'{{session}}','user_message':full}))" \
+    | grpcurl -plaintext \
+        -proto ../proto/agent.proto \
         -d @ \
         '[::1]:50052' \
-        agent.AgentService/Chat < /tmp/agent_prompt_payload.json
+        agent.AgentService/Chat
+
+# Test OCR with a local image file (single required arg avoids just's optional-param quirk)
+# Usage: just ocr /abs/path/to/ticket.jpg
+ocr image:
+    python3 -c "import json; print(json.dumps({'session_id':'test','user_message':'Here is my booking screenshot, please extract all the flight details.\n[image_path={{image}}]'}))" \
+    | grpcurl -plaintext \
+        -proto ../proto/agent.proto \
+        -d @ \
+        '[::1]:50052' \
+        agent.AgentService/Chat
 
 # Check + clippy
 lint:

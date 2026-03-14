@@ -66,7 +66,12 @@ impl OrchestrationEngine {
             .agent(&self.config.featherless_model)
             .preamble(&preamble::build())
             .tool(ScraperTool::new(Arc::clone(&self.scraper_client)))
-            .tool(OcrTool::new(Arc::clone(&self.ocr_client)))
+            .tool(OcrTool::new(
+                Arc::clone(&self.ocr_client),
+                self.config.featherless_api_key.clone(),
+                self.config.featherless_base_url.clone(),
+                self.config.featherless_model.clone(),
+            ))
             .tool(DestinationIdTool::new(
                 self.config.featherless_api_key.clone(),
                 self.config.featherless_base_url.clone(),

@@ -17,4 +17,5 @@ message ExtractBookingResponse {
   string summary = 2;
   optional string comparison_query_json = 3;
   optional string error = 4;
+  string raw_ocr_text = 5;
 }
