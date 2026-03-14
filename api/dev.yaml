@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: vibehack-db-dev
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -18,7 +17,6 @@ services:
 
   redis:
     image: redis/redis-stack:latest
-    container_name: vibehack-redis-dev
     ports:
       - "6379:6379"
       - "8001:8001"
@@ -27,7 +25,6 @@ services:
 
   minio:
     image: quay.io/minio/minio
-    container_name: vibehack-minio-dev
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -40,7 +37,6 @@ services:
 
   nginx:
     image: nginx:alpine
-    container_name: vibehack-nginx-dev
     ports:
       - "8080:80"
     volumes:
