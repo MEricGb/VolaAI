@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
-import { WhatsAppModule } from './whatsapp.module';
+import { DbModule } from './db/db.module';
+import { StripeModule } from './stripe/stripe.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 @Module({
-  imports: [WhatsAppModule],
+  imports: [DbModule, WhatsAppModule, StripeModule],
 })
 export class AppModule {}
