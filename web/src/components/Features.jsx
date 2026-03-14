@@ -6,33 +6,33 @@ const Features = () => {
   return (
     <section className="features" id="features">
       <div className="features-header">
-        <h2>Why book with Vola.ai?</h2>
-        <p>The fastest and most convenient way to organize your travels.</p>
+        <h2>Built different.</h2>
+        <p>No apps to download. No accounts to create. Just WhatsApp.</p>
       </div>
       
       <div className="features-grid">
         <div className="feature-card">
           <div className="feature-icon">
-            <Zap size={32} />
+            <Zap size={28} />
           </div>
-          <h3>Instant AI Planning</h3>
-          <p>Describe your dream vacation in plain English. Our AI analyzes millions of flights and hotels in seconds to find the perfect match.</p>
+          <h3>Describe it, done.</h3>
+          <p>Say "weekend in Barcelona under €400" and get real options. Our AI parses natural language — no dropdowns, no filters.</p>
         </div>
         
         <div className="feature-card">
           <div className="feature-icon">
-            <CheckCircle2 size={32} />
+            <CheckCircle2 size={28} />
           </div>
-          <h3>Secure Direct Booking</h3>
-          <p>Book directly through our secure WhatsApp integration. No need to visit sketchy third-party sites or enter your credit card repeatedly.</p>
+          <h3>Book in one reply.</h3>
+          <p>Tap confirm. That's it. No card re-entry, no sketchy redirects. Your booking is confirmed in the same chat thread.</p>
         </div>
         
         <div className="feature-card">
           <div className="feature-icon">
-            <Headphones size={32} />
+            <Headphones size={28} />
           </div>
-          <h3>24/7 Support in Chat</h3>
-          <p>Flight delayed? Need to change a reservation? Just text the same WhatsApp number anytime for instant, zero-wait-time assistance.</p>
+          <h3>Always there.</h3>
+          <p>Flight delayed at 2am? Gate changed? Text us. Same number, same chat — instant response, any time zone.</p>
         </div>
       </div>
     </section>

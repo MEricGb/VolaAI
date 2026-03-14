@@ -6,6 +6,7 @@ import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import TrustBar from './components/TrustBar';
 import Features from './components/Features';
+import FAQ from './components/FAQ';
 import Footer from './components/Footer';
 
 // Admin Dashboard Components
@@ -19,10 +20,12 @@ const LandingPage = () => (
       <Hero />
       <TrustBar />
       <Features />
+      <FAQ />
     </main>
     <Footer />
   </div>
 );
+
 
 // Placeholder components for other admin routes
 const AdminPlaceholder = ({ title }) => (
