@@ -11,4 +11,5 @@ FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY --from=builder /app/nginx.conf /etc/nginx/templates/default.conf.template
 ENV PORT=80
+ENV NGINX_ENVSUBST_FILTER=PORT
 CMD ["nginx", "-g", "daemon off;"]
