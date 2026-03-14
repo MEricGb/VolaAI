@@ -4,7 +4,6 @@ import {
   MessageSquareText,
   UserCheck,
   MessagesSquare,
-  RefreshCw,
 } from 'lucide-react';
 import {
   addGroupMembers,
@@ -33,7 +32,6 @@ const normalizePhones = (input) =>
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [overview, setOverview] = useState(null);
   const [groups, setGroups] = useState([]);
@@ -56,12 +54,8 @@ const Dashboard = () => {
   const [submitting, setSubmitting] = useState(false);
   const [actionFeedback, setActionFeedback] = useState('');
 
-  const loadData = async (silent = false) => {
-    if (silent) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+  const loadData = async () => {
+    setLoading(true);
     setError('');
 
     try {
@@ -76,7 +70,6 @@ const Dashboard = () => {
       setError(err.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -148,7 +141,7 @@ const Dashboard = () => {
         `Group "${result.name}" created. Join code: ${result.joinCode}.`,
       );
       setCreateForm({ name: '', ownerPhone: '', ownerName: '', memberPhones: '' });
-      await loadData(true);
+      await loadData();
     } catch (err) {
       setActionFeedback(err.message || 'Failed to create group');
     } finally {
@@ -169,7 +162,7 @@ const Dashboard = () => {
         `Added ${result.added} member(s). Invites sent: ${result.invitesSent}.`,
       );
       setAddMembersForm((prev) => ({ ...prev, memberPhones: '' }));
-      await loadData(true);
+      await loadData();
     } catch (err) {
       setActionFeedback(err.message || 'Failed to add members');
     } finally {
@@ -189,7 +182,7 @@ const Dashboard = () => {
       );
       setActionFeedback('Message sent to the selected group.');
       setMessageForm((prev) => ({ ...prev, body: '' }));
-      await loadData(true);
+      await loadData();
     } catch (err) {
       setActionFeedback(err.message || 'Failed to send message');
     } finally {
@@ -208,15 +201,6 @@ const Dashboard = () => {
 
       <div className="admin-card-header">
         <h3>Live WhatsApp Overview</h3>
-        <button
-          type="button"
-          className="btn btn-primary admin-refresh"
-          onClick={() => loadData(true)}
-          disabled={refreshing}
-        >
-          <RefreshCw size={16} className={refreshing ? 'spin' : ''} />
-          {refreshing ? 'Refreshing...' : 'Refresh'}
-        </button>
       </div>
 
       <div className="dashboard-metrics">
