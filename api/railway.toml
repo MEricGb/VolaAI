@@ -3,6 +3,6 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile.api"
 
 [deploy]
-startCommand = "node dist/main.js"
+startCommand = "npx prisma migrate deploy && node dist/main.js"
 healthcheckPath = "/health"
 restartPolicyType = "on_failure"
