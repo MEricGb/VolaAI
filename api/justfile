@@ -1,0 +1,42 @@
+# Install npm dependencies
+setup:
+    npm install
+
+# Generate Prisma client (run this after cloning or after schema changes)
+db-generate:
+    npx prisma generate
+
+# Run database migrations
+db-migrate:
+    npx prisma migrate deploy
+
+# Start the API in dev mode (hot-reload via ts-node)
+start: db-generate
+    npm run start:dev
+
+# Type-check without emitting
+check:
+    npx tsc --noEmit
+
+# ── Agent gRPC tests ─────────────────────────────────────────────────────────
+
+# Send a test chat message to the agent gRPC service (requires grpcurl + agent running)
+# Usage:
+#   just agent-chat "your message here"
+#   just agent-chat "your message here" session="whatsapp:+1234567890"
+agent-chat message session="test":
+    grpcurl -plaintext \
+        -proto ../proto/agent.proto \
+        -d '{"session_id": "{{session}}", "user_message": "{{message}}"}' \
+        localhost:50052 \
+        agent.AgentService/Chat
+
+# Simulate a Twilio WhatsApp webhook hitting the API (requires API running via `just start`)
+# Usage:
+#   just whatsapp-test "your message here"
+#   just whatsapp-test "your message here" from="whatsapp:+1234567890"
+whatsapp-test message from="whatsapp:+15550000000":
+    curl -s -X POST http://localhost:3000/whatsapp \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "From={{from}}&Body={{message}}&NumMedia=0" \
+        | xmllint --format - 2>/dev/null || cat
