@@ -1,6 +1,6 @@
 [build]
 builder = "dockerfile"
-dockerfilePath = "scraper/Dockerfile"
+dockerfilePath = "Dockerfile.scraper"
 
 [deploy]
 restartPolicyType = "on_failure"

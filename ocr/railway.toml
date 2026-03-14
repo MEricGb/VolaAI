@@ -1,6 +1,6 @@
 [build]
 builder = "dockerfile"
-dockerfilePath = "ocr/Dockerfile"
+dockerfilePath = "Dockerfile.ocr"
 
 [deploy]
 restartPolicyType = "on_failure"
