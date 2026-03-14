@@ -3,7 +3,7 @@ WORKDIR /app
 COPY api/package*.json ./
 RUN npm install
 COPY api/ .
-RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
+RUN npx prisma generate
 RUN npm run build
 
 FROM node:20-alpine
@@ -12,6 +12,7 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY api/package*.json ./
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./
 # proto must be at /proto/agent.proto (path hardcoded in agent.service.ts)
 COPY proto/ /proto/
 EXPOSE 8080
