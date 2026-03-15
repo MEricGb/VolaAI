@@ -53,6 +53,7 @@ impl OrchestrationEngine {
         let scraper_tool = ScraperTool::new(Arc::clone(&scraper_client));
         let ocr_tool = OcrTool::new(
             Arc::clone(&ocr_client),
+            Arc::clone(&scraper_client),
             config.featherless_api_key.clone(),
             config.featherless_base_url.clone(),
             config.featherless_model.clone(),

@@ -43,13 +43,15 @@ def normalize_whitespace(s: str) -> str:
 #   187 EUR       187.50 EUR
 #   Total: €187   Price: 187 EUR
 _PRICE_PATTERNS = [
-    r"(?:Total|Price|Cost|Amount|Fare)[:\s]+[€$£]?\s*(\d{1,7}(?:[.,]\d{1,3})?)",  # labelled
-    r"[€$£]\s*(\d{1,7}(?:[.,]\d{1,3})?)",                                           # symbol first
-    r"(\d{1,7}(?:[.,]\d{1,3})?)\s*(?:EUR|USD|GBP|RON|lei)\b",                      # amount + code
-    r"(?:EUR|USD|GBP|RON)\s*(\d{1,7}(?:[.,]\d{1,3})?)",                            # code + amount
+    r"(?:Total|Price|Cost|Amount|Fare)[:\s]+[€$£₹₱฿]?\s*(\d{1,7}(?:[.,]\d{1,3})?)",  # labelled
+    r"[€$£₹₱฿]\s*(\d{1,7}(?:[.,]\d{1,3})?)",                                           # symbol first
+    r"(\d{1,7}(?:[.,]\d{1,3})?)\s*(?:EUR|USD|GBP|INR|AED|SAR|SEK|NOK|DKK|PLN|CZK|CHF|CAD|AUD|SGD|THB|MYR|IDR|RON|lei)\b",
+    r"(?:EUR|USD|GBP|INR|AED|SAR|SEK|NOK|DKK|PLN|CZK|CHF|CAD|AUD|SGD|THB|MYR|IDR|RON)\s*(\d{1,7}(?:[.,]\d{1,3})?)",
 ]
 
-_CURRENCY_SYMBOL_MAP = {"€": "EUR", "$": "USD", "£": "GBP"}
+_CURRENCY_SYMBOL_MAP = {"€": "EUR", "$": "USD", "£": "GBP", "₹": "INR", "₱": "PHP", "฿": "THB"}
+
+_CURRENCY_CODE_RE = r"\b(EUR|USD|GBP|INR|AED|SAR|SEK|NOK|DKK|PLN|CZK|CHF|CAD|AUD|SGD|THB|MYR|IDR|RON)\b"
 
 
 def parse_price(text: str) -> tuple[Optional[float], Optional[str]]:
@@ -64,7 +66,7 @@ def parse_price(text: str) -> tuple[Optional[float], Optional[str]]:
             currency = code
             break
     # Check for explicit 3-letter currency codes
-    m = re.search(r"\b(EUR|USD|GBP|RON)\b", text, re.IGNORECASE)
+    m = re.search(_CURRENCY_CODE_RE, text, re.IGNORECASE)
     if m:
         currency = m.group(1).upper()
 
@@ -100,8 +102,8 @@ _MONTH_MAP = {
 _DATE_PATTERNS: list[tuple[str, str]] = [
     # ISO: 2026-04-12
     (r"\b(\d{4})-(\d{2})-(\d{2})\b", "iso"),
-    # dd/mm/yyyy or dd.mm.yyyy
-    (r"\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b", "dmy"),
+    # dd/mm/yyyy or dd.mm.yyyy or dd-mm-yyyy
+    (r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b", "dmy"),
     # "12 Apr 2026" or "Apr 12, 2026" or "April 12 2026"
     (r"\b(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})\b", "dmy_text"),
     (r"\b([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})\b", "mdy_text"),

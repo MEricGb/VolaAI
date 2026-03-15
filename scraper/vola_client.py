@@ -121,9 +121,24 @@ class VolaClient:
             "LH": "Lufthansa", "AF": "Air France", "BA": "British Airways",
             "VY": "Vueling", "U2": "easyJet", "W4": "Wizz Air Malta",
             "SN": "Brussels Airlines", "KL": "KLM", "IB": "Iberia",
-            "OS": "Austrian", "LX": "Swiss", "TK": "Turkish", "LO": "LOT",
-            "OE": "OE", "JU": "Air Serbia", "TG": "Thai", "H4": "HiSky",
+            "OS": "Austrian", "LX": "Swiss", "TK": "Turkish Airlines", "LO": "LOT",
+            "OE": "OE", "JU": "Air Serbia", "TG": "Thai Airways", "H4": "HiSky",
             "A2": "Animawings",
+            # Indian
+            "AI": "Air India", "6E": "IndiGo", "SG": "SpiceJet",
+            "UK": "Vistara", "G8": "Go First", "QP": "Akasa Air",
+            "IX": "Air India Express", "I5": "Air Asia India",
+            # Middle East
+            "EK": "Emirates", "EY": "Etihad", "QR": "Qatar Airways",
+            "FZ": "flydubai", "G9": "Air Arabia",
+            # Asian
+            "SQ": "Singapore Airlines", "CX": "Cathay Pacific",
+            "JL": "Japan Airlines", "NH": "ANA", "KE": "Korean Air",
+            "OZ": "Asiana", "TG": "Thai Airways", "FD": "Thai AirAsia",
+            "AK": "AirAsia", "MH": "Malaysia Airlines", "GA": "Garuda",
+            # Other
+            "QF": "Qantas", "NZ": "Air New Zealand",
+            "ET": "Ethiopian Airlines", "MS": "EgyptAir",
         }
 
         results: list[FlightOffer] = []
@@ -159,17 +174,13 @@ class VolaClient:
                         ret_flight_num  = ret_segs[0].get("fullFlightNumber", "??")
                         ret_airline_name = airline_names.get(ret_code, ret_code)
 
-                # Price = fare total + transaction fee
-                fare_amount = (
+                # Price: totalPrice already includes the transaction fee —
+                # do NOT add transactionFee again or it is double-counted.
+                total_price = round(
                     raw["tickets"][0]["fares"][0]["totalPrice"]["amount"]
-                    if raw.get("tickets") else 0.0
+                    if raw.get("tickets") else 0.0,
+                    2,
                 )
-                fee_amount = (
-                    raw.get("fees", {})
-                       .get("transactionFee", {})
-                       .get("amount", 0.0)
-                )
-                total_price = round(fare_amount + fee_amount, 2)
 
                 # Deep link uses fulfillmentToken if available
                 token = raw.get("fulfillmentToken", "")

@@ -68,4 +68,8 @@ class TripCheckPayload:
     #   }
     comparison_query: Optional[dict] = None
 
+    # Human-readable trip-check verdict: verdict line + live alternatives.
+    # Populated when compare_with_vola() is called successfully.
+    trip_check: Optional[str] = None
+
     error: Optional[str] = None
