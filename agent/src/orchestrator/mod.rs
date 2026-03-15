@@ -8,9 +8,13 @@ pub mod preamble;
 
 use std::sync::Arc;
 
+use base64::engine::Engine as _;
+use base64::engine::general_purpose;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::openai;
+use s3::creds::Credentials;
+use s3::{Bucket, Region};
 use tracing::{info, instrument, warn};
 
 use crate::{
@@ -30,6 +34,9 @@ pub struct OrchestrationEngine {
     scraper_tool: ScraperTool,
     ocr_tool: OcrTool,
     dest_tool: DestinationIdTool,
+    ocr_client: Arc<OcrClient>,
+    http: reqwest::Client,
+    s3_bucket: Box<Bucket>,
 }
 
 pub struct ProcessResult {
@@ -62,8 +69,21 @@ impl OrchestrationEngine {
             config.featherless_api_key.clone(),
             config.featherless_base_url.clone(),
             config.destination_id_model.clone(),
-            http,
+            http.clone(),
         );
+
+        let region = Region::Custom {
+            region: "us-east-1".to_string(),
+            endpoint: format!("http://{}:{}", config.minio_endpoint, config.minio_port),
+        };
+        let credentials = Credentials::new(
+            Some(&config.minio_access_key),
+            Some(&config.minio_secret_key),
+            None, None, None,
+        ).map_err(|e| AppError::Config(anyhow::anyhow!("MinIO credentials error: {e}")))?;
+        let s3_bucket = Bucket::new(&config.minio_bucket, region, credentials)
+            .map_err(|e| AppError::Config(anyhow::anyhow!("MinIO bucket init error: {e}")))?
+            .with_path_style();
 
         Ok(Self {
             config,
@@ -71,6 +91,9 @@ impl OrchestrationEngine {
             scraper_tool,
             ocr_tool,
             dest_tool,
+            ocr_client,
+            http: http.clone(),
+            s3_bucket,
         })
     }
 
@@ -83,8 +106,25 @@ impl OrchestrationEngine {
         &self,
         session_id: &str,
         user_message: &str,
+        image_urls: &[String],
     ) -> Result<ProcessResult, AppError> {
         info!(user_message, "Processing request");
+
+        // Pre-process images before building the rig agent
+        let image_context = if !image_urls.is_empty() {
+            self.preprocess_images(session_id, image_urls).await
+        } else {
+            String::new()
+        };
+
+        // Prepend image context to user_message for the rest of the pipeline
+        let user_message = if image_context.is_empty() {
+            user_message.to_string()
+        } else {
+            format!("[Image context]\n{image_context}\n\n[User message]\n{user_message}")
+        };
+        let user_message = user_message.as_str();
+
         info!(model = %self.config.featherless_model, "Calling agent LLM");
 
         let agent = self.llm_client
@@ -106,5 +146,127 @@ impl OrchestrationEngine {
         info!(reply_len = reply.len(), "Agent responded");
 
         Ok(ProcessResult { reply })
+    }
+
+    /// Download and analyse each image URL.
+    /// Returns a combined context string to prepend to the user message.
+    async fn preprocess_images(&self, session_id: &str, image_urls: &[String]) -> String {
+        let mut context_parts: Vec<String> = Vec::new();
+
+        for (i, url) in image_urls.iter().enumerate() {
+            let label = format!("Image {}", i + 1);
+
+            // 1. Try OCR first (direct gRPC call — not a rig tool invocation)
+            match self.ocr_client
+                .extract_booking_info(
+                    session_id.to_string(),
+                    url.clone(),
+                    "tesseract".to_string(),
+                )
+                .await
+            {
+                Ok(resp) if resp.success => {
+                    let mut parts = vec![resp.summary.clone()];
+                    if let Some(q) = &resp.comparison_query_json {
+                        parts.push(format!("comparison_query: {q}"));
+                    }
+                    context_parts.push(format!("{label} (booking document): {}", parts.join("; ")));
+                    continue;
+                }
+                Ok(_) => {
+                    tracing::debug!(url, "OCR found no booking; trying vision LLM");
+                }
+                Err(e) => {
+                    tracing::warn!(url, error = %e, "OCR call failed; trying vision LLM");
+                }
+            }
+
+            // 2. Fall back to vision LLM with base64-encoded image bytes
+            match self.describe_image_with_vision(url).await {
+                Ok(description) => {
+                    context_parts.push(format!("{label} (photo): {description}"));
+                }
+                Err(e) => {
+                    tracing::warn!(url, error = %e, "Vision LLM failed; skipping image");
+                }
+            }
+        }
+
+        context_parts.join("\n")
+    }
+
+    /// Extract the S3 object key from a MinIO URL.
+    /// e.g. "http://minio:9000/whatsapp-media/uploads/phone/ts-0.jpg" → "uploads/phone/ts-0.jpg"
+    fn extract_object_key<'a>(&self, url: &'a str) -> Result<&'a str, AppError> {
+        let prefix = format!("/{}/", self.config.minio_bucket);
+        let pos = url.find(&prefix)
+            .ok_or_else(|| AppError::Config(anyhow::anyhow!(
+                "Cannot extract key from MinIO URL: {url}"
+            )))?;
+        Ok(&url[pos + prefix.len()..])
+    }
+
+    /// Download image bytes from MinIO (authenticated) for vision LLM processing.
+    async fn download_from_minio(&self, url: &str) -> Result<Vec<u8>, AppError> {
+        let key = self.extract_object_key(url)?;
+        tracing::debug!(key, "Downloading from MinIO");
+        let response = self.s3_bucket.get_object(key).await
+            .map_err(|e| AppError::Llm(format!("MinIO download failed for {key}: {e}")))?;
+        Ok(response.to_vec())
+    }
+
+    /// Download image bytes from MinIO and send to the vision LLM.
+    async fn describe_image_with_vision(&self, url: &str) -> Result<String, AppError> {
+        let bytes = self.download_from_minio(url).await?;
+
+        let mime = image::guess_format(&bytes)
+            .map(|fmt| match fmt {
+                image::ImageFormat::Jpeg => "image/jpeg",
+                image::ImageFormat::Png  => "image/png",
+                image::ImageFormat::Gif  => "image/gif",
+                image::ImageFormat::WebP => "image/webp",
+                _                        => "image/jpeg",
+            })
+            .unwrap_or("image/jpeg");
+
+        let b64 = general_purpose::STANDARD.encode(&bytes);
+        let data_uri = format!("data:{mime};base64,{b64}");
+
+        let payload = serde_json::json!({
+            "model": self.config.destination_id_model,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": { "url": data_uri }
+                    },
+                    {
+                        "type": "text",
+                        "text": "Describe this image in the context of travel planning. What does it show? Be concise (1-3 sentences)."
+                    }
+                ]
+            }],
+            "max_tokens": 256,
+            "temperature": 0.0
+        });
+
+        let resp: serde_json::Value = self.http
+            .post(format!("{}/chat/completions", self.config.featherless_base_url))
+            .bearer_auth(&self.config.featherless_api_key)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| AppError::Llm(format!("Vision LLM request failed: {e}")))?
+            .json()
+            .await
+            .map_err(|e| AppError::Llm(format!("Vision LLM response parse failed: {e}")))?;
+
+        let description = resp["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("(image received, no description available)")
+            .to_string();
+
+        Ok(description)
     }
 }
