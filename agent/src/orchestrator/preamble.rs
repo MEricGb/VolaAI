@@ -9,9 +9,13 @@
 ///
 /// The fast model reads this to decide which tool is relevant for the user
 /// message and extracts the key parameters. Its output feeds into stage 2.
-pub fn build_tool_descriptions() -> &'static str {
-    "\
+pub fn build_tool_descriptions() -> String {
+    let today = chrono::Utc::now().format("%Y-%m-%d");
+    format!(
+        "\
 You are a tool selector. Analyze the user message and decide which tool to use.
+
+Today's date is {today}. When extracting dates, always resolve to {today} or later.
 
 AVAILABLE TOOLS:
 
@@ -32,17 +36,23 @@ INSTRUCTIONS:
   photos or `extract_booking_info` for booking/document screenshots.
 - If the message is NOT travel-related, respond with: NONE — not a travel query.
 - Extract any relevant parameters from the message (origins, destinations, dates, image paths)."
+    )
 }
 
 /// Stage 2 prompt — tool invocation rules.
 ///
 /// The fast model uses this to actually call the selected tool with the
 /// correct parameters. It receives the tool selection from stage 1.
-pub fn build_tool_invocation() -> &'static str {
-    "\
+pub fn build_tool_invocation() -> String {
+    let today = chrono::Utc::now().format("%Y-%m-%d");
+    format!(
+        "\
 You are a tool executor. You receive a tool selection analysis and the original user message. \
 Your job is to call the correct tool(s) and return the raw results. \
 You may call MORE THAN ONE tool when the task requires it.
+
+Today's date is {today}. All dates you produce MUST be today or in the future. \
+Never use a past date for depart_date or return_date.
 
 TOOL INVOCATION RULES:
 
@@ -66,6 +76,7 @@ to provide a trip_check comparison. Return ALL results from every tool you calle
 
 - If the tool selection says NONE, do NOT call any tool. Simply reply with the user's \
 message summary so the next stage can respond appropriately."
+    )
 }
 
 /// Stage 3 prompt — persona, scope, and response formatting.

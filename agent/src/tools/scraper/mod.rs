@@ -129,9 +129,12 @@ impl Tool for ScraperTool {
     type Output = SearchFlightsOutput;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
+        let today = chrono::Utc::now().format("%Y-%m-%d");
+        let year = chrono::Utc::now().format("%Y");
         ToolDefinition {
             name: Self::NAME.to_string(),
-            description: "Search for real flights via the Vola flight search engine. \
+            description: format!(
+                "Search for real flights via the Vola flight search engine. \
                 Call this tool whenever the user asks about flights, prices, routes, or travel. \
                 You MUST resolve city names to IATA codes before calling — use the reference below.\n\n\
                 City → IATA reference:\n\
@@ -151,10 +154,11 @@ impl Tool for ScraperTool {
                 tel aviv → TLV, cairo → CAI, new york → JFK, los angeles → LAX, \
                 miami → MIA, toronto → YYZ, montreal → YUL, tokyo → NRT, \
                 singapore → SIN, bangkok → BKK, bali → DPS, delhi → DEL, mumbai → BOM\n\n\
+                Today's date is {today}. All dates MUST be today or in the future. \
                 If only a month is given with no exact date, use the 1st of that month \
-                (e.g. 'June' → depart_date: '2026-06-01'). \
+                (e.g. 'June' → depart_date: '{year}-06-01'). \
                 Default adults to 1 if not specified."
-                .to_string(),
+            ),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {

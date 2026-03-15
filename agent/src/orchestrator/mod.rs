@@ -89,7 +89,7 @@ impl OrchestrationEngine {
     async fn select_tool(&self, user_message: &str) -> Result<String, AppError> {
         let selector = self.llm_client
             .agent(&self.config.fast_model)
-            .preamble(preamble::build_tool_descriptions())
+            .preamble(&preamble::build_tool_descriptions())
             .build();
 
         let selection = selector
@@ -115,7 +115,7 @@ impl OrchestrationEngine {
     ) -> Result<String, AppError> {
         let executor = self.llm_client
             .agent(&self.config.fast_model)
-            .preamble(preamble::build_tool_invocation())
+            .preamble(&preamble::build_tool_invocation())
             .tool(self.scraper_tool.clone())
             .tool(self.ocr_tool.clone())
             .tool(self.dest_tool.clone())
