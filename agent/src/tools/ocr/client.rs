@@ -34,14 +34,14 @@ impl OcrClient {
     pub async fn extract_booking_info(
         &self,
         session_id: String,
-        image_path: String,
+        image_url: String,
         ocr_backend: String,
     ) -> Result<ExtractBookingResponse, AppError> {
         let mut client = self.inner.clone();
         let response = client
             .extract_booking_info(ExtractBookingRequest {
                 session_id,
-                image_path,
+                image_url,
                 ocr_backend,
             })
             .await?;

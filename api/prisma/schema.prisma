@@ -75,3 +75,15 @@ model WhatsAppGroupMessage {
   @@index([groupId, createdAt])
   @@map("whatsapp_group_messages")
 }
+
+model UserMedia {
+  id          String   @id @default(uuid())
+  userPhone   String   @map("user_phone")
+  minioUrl    String   @map("minio_url")
+  contentType String   @map("content_type")
+  fileSize    Int?     @map("file_size")
+  sessionId   String?  @map("session_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("user_media")
+}

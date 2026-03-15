@@ -8,7 +8,7 @@ service OcrService {
 
 message ExtractBookingRequest {
   string session_id = 1;
-  string image_path = 2;
+  string image_url = 2;   // renamed from image_path; accepts MinIO HTTP URL
   string ocr_backend = 3;
 }
 

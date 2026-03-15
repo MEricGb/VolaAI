@@ -13,6 +13,9 @@ pub struct Config {
     pub grpc_port:            u16,
     pub scraper_grpc_url:     String,
     pub ocr_grpc_url:         String,
+    pub minio_endpoint:       String,
+    pub minio_port:           u16,
+    pub minio_bucket:         String,
 }
 
 impl Config {
@@ -42,6 +45,15 @@ impl Config {
 
             ocr_grpc_url: std::env::var("OCR_GRPC_URL")
                 .unwrap_or_else(|_| "http://[::1]:50053".to_string()),
+
+            minio_endpoint: std::env::var("MINIO_ENDPOINT")
+                .unwrap_or_else(|_| "localhost".to_string()),
+            minio_port: std::env::var("MINIO_PORT")
+                .unwrap_or_else(|_| "9000".to_string())
+                .parse()
+                .context("MINIO_PORT must be a valid port number")?,
+            minio_bucket: std::env::var("MINIO_BUCKET")
+                .unwrap_or_else(|_| "whatsapp-media".to_string()),
         })
     }
 }

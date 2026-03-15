@@ -40,7 +40,7 @@ CRITICAL — dates and numbers:
 #[derive(Debug, Deserialize)]
 pub struct ExtractBookingArgs {
     pub session_id: String,
-    pub image_path: String,
+    pub image_url: String,
 }
 
 /// Serializable output returned to the LLM after tool execution.
@@ -142,12 +142,12 @@ impl Tool for OcrTool {
                         "type": "string",
                         "description": "The conversation session identifier"
                     },
-                    "image_path": {
+                    "image_url": {
                         "type": "string",
-                        "description": "Absolute or relative path to the booking screenshot image"
+                        "description": "MinIO HTTP URL of the booking screenshot image"
                     }
                 },
-                "required": ["session_id", "image_path"]
+                "required": ["session_id", "image_url"]
             }),
         }
     }
@@ -155,7 +155,7 @@ impl Tool for OcrTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         let response = self
             .client
-            .extract_booking_info(args.session_id, args.image_path, "tesseract".to_string())
+            .extract_booking_info(args.session_id, args.image_url, "tesseract".to_string())
             .await?;
 
         if !response.success {

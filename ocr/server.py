@@ -17,6 +17,8 @@ import json
 import logging
 import os
 import sys
+import tempfile
+import urllib.request
 from concurrent import futures
 
 import grpc
@@ -35,6 +37,17 @@ log = logging.getLogger(__name__)
 
 GRPC_PORT = 50053
 VALID_BACKENDS = {"mock", "tesseract", "google", "openai", "featherless"}
+
+
+def _download_to_temp(image_url: str) -> str:
+    """Download an image from a URL to a temp file. Returns the temp file path."""
+    ext = image_url.rstrip('/').split('.')[-1].split('?')[0]
+    if not ext or len(ext) > 5:
+        ext = 'jpg'
+    with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as f:
+        tmp_path = f.name
+    urllib.request.urlretrieve(image_url, tmp_path)
+    return tmp_path
 
 
 def _summary_from_payload(payload) -> str:
@@ -63,10 +76,10 @@ def _summary_from_payload(payload) -> str:
 class OcrServicer(ocr_pb2_grpc.OcrServiceServicer):
     def ExtractBookingInfo(self, request, context):
         session_id = request.session_id
-        image_path = request.image_path
+        image_url = request.image_url
         backend = (request.ocr_backend or "mock").strip().lower()
 
-        log.info("[%s] OCR request path=%r backend=%s", session_id, image_path, backend)
+        log.info("[%s] OCR request url=%r backend=%s", session_id, image_url, backend)
 
         if backend not in VALID_BACKENDS:
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
@@ -79,10 +92,24 @@ class OcrServicer(ocr_pb2_grpc.OcrServiceServicer):
                 error=f"Unsupported ocr_backend: {backend}",
             )
 
+        # Download image from MinIO URL to a local temp file
+        tmp_path = None
+        try:
+            tmp_path = _download_to_temp(image_url)
+        except Exception as exc:
+            log.exception("[%s] Failed to download image from %r", session_id, image_url)
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"Image download failed: {exc}")
+            return ocr_pb2.ExtractBookingResponse(
+                success=False,
+                summary="",
+                error=f"Image download failed: {exc}",
+            )
+
         try:
             provider = get_provider(backend)
             service = TripCheckService(ocr_provider=provider)
-            payload = service.process_image(image_path)
+            payload = service.process_image(tmp_path)
         except Exception as exc:
             log.exception("[%s] OCR pipeline failed", session_id)
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -92,6 +119,9 @@ class OcrServicer(ocr_pb2_grpc.OcrServiceServicer):
                 summary="",
                 error=f"OCR pipeline failed: {exc}",
             )
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
         if not payload.success:
             return ocr_pb2.ExtractBookingResponse(
