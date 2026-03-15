@@ -17,9 +17,23 @@ import { PrismaService } from '../db/prisma.service';
 import { AddGroupMembersDto } from './dto/add-group-members.dto';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { AgentService } from '../agent/agent.service';
+import { MediaService } from '../media/media.service';
 import { IncomingMessageDto } from './dto/incoming-message.dto';
 import { SendGroupMessageDto } from './dto/send-group-message.dto';
 import { ConversationPreEventDto } from './dto/conversation-pre-event.dto';
+
+type PendingGroupAi = {
+  id: string;
+  conversationSid: string;
+  author: string;
+  senderName: string;
+  userMessage: string | null;
+  mediaJson: string | null;
+  chatServiceSid: string | null;
+  createdAt: number;
+  flushed: boolean;
+  timer: NodeJS.Timeout;
+};
 
 @Injectable()
 export class WhatsAppService {
@@ -30,10 +44,15 @@ export class WhatsAppService {
   private readonly contentSid: string | null;
   private readonly aiTrigger: string | null;
   private readonly sandboxJoinPhrase: string | null;
+  private readonly conversationChatServiceSidCache = new Map<string, string>();
+  private readonly pendingGroupAi = new Map<string, PendingGroupAi[]>();
+  private readonly groupAiDebounceMs = 800;
+  private readonly groupAiPendingTtlMs = 8000;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly agentService: AgentService,
+    private readonly mediaService: MediaService,
   ) {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -152,19 +171,58 @@ export class WhatsAppService {
     // Fire agent call async — Twilio times out after ~15s so we return empty TwiML
     // immediately and send the reply via the Messages API once the agent responds.
     const sessionId = `dm:${from}`;
-    this.triggerAgentReply(from, sessionId, triggerParse.stripped).catch((err) =>
+    this.triggerAgentReplyWithMedia(from, sessionId, triggerParse.stripped, dto).catch((err) =>
       this.logger.error('1-to-1 async agent reply failed', err),
     );
     return this.buildEmptyTwiml();
   }
 
-  private async triggerAgentReply(to: string, sessionId: string, body: string): Promise<void> {
-    this.logger.log(`[1-to-1] Calling agent gRPC: session=${sessionId} message="${body}"`);
+  private async triggerAgentReplyWithMedia(
+    to: string,
+    sessionId: string,
+    body: string,
+    dto: IncomingMessageDto,
+  ): Promise<void> {
+    const items = this.extractMessagingMediaItems(dto);
+    let imageUrls: string[] = [];
+
+    if (items.length > 0) {
+      const webhookAccountSid = String(dto.AccountSid ?? '').trim();
+      const envAccountSid = String(process.env.TWILIO_ACCOUNT_SID ?? '').trim();
+      const accountSid = webhookAccountSid || envAccountSid;
+      const authToken = String(process.env.TWILIO_AUTH_TOKEN ?? '').trim();
+
+      if (webhookAccountSid && envAccountSid && webhookAccountSid !== envAccountSid) {
+        this.logger.warn(
+          `[media] Webhook AccountSid (${webhookAccountSid}) does not match TWILIO_ACCOUNT_SID (${envAccountSid}). Using webhook AccountSid for media download.`,
+        );
+      }
+      if (!accountSid || !authToken) {
+        this.logger.warn('[media] TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN missing; skipping media ingest');
+      } else {
+        const stored = await this.mediaService.storeTwilioMessagingMedia(items, accountSid, authToken);
+        imageUrls = stored.map((s) => s.url);
+        this.logger.log(`[media] Stored ${imageUrls.length}/${items.length} attachments for 1-to-1`);
+      }
+    }
+
+    await this.triggerAgentReply(to, sessionId, body, imageUrls);
+  }
+
+  private async triggerAgentReply(
+    to: string,
+    sessionId: string,
+    body: string,
+    imageUrls: string[] = [],
+  ): Promise<void> {
+    this.logger.log(
+      `[1-to-1] Calling agent gRPC: session=${sessionId} message="${body}" images=${imageUrls.length}`,
+    );
     let reply: string;
     try {
-      let prompt = body;
+      let prompt = this.formatUserMessageWithImages(body, imageUrls);
       try {
-        prompt = await this.buildDirectPrompt(to, body);
+        prompt = await this.buildDirectPrompt(to, prompt);
       } catch (err: any) {
         this.logger.warn(
           `[1-to-1] Failed to build context prompt, falling back to raw message: ${err?.message ?? err}`,
@@ -205,44 +263,250 @@ export class WhatsAppService {
     this.logger.log(`Conversation Event [${dto.EventType}] from ${dto.Author}`);
 
     if (dto.EventType !== 'onMessageAdd') {
-      return { body: dto.Body };
+      return { body: dto.Body ?? '' };
     }
 
     // Skip system messages
     if (dto.Author === 'system') {
-      return { body: dto.Body };
+      return { body: dto.Body ?? '' };
     }
+
+    // Ensure the ConversationSid is mapped to a WhatsAppGroup row. If not, reconcile
+    // with the author's active membership or create a new group record.
+    await this.ensureGroupForConversation(dto.ConversationSid, dto.Author).catch((err) =>
+      this.logger.warn(
+        `[group] Failed to ensure group mapping for ${dto.ConversationSid}: ${err?.message ?? err}`,
+      ),
+    );
+
+    const rawBody = (dto.Body ?? '').toString();
+    const trimmedBody = rawBody.trim();
 
     // Look up sender display name from Sync Map (our DB)
     const senderName = await this.getSenderName(dto.Author);
-    const modifiedBody = `*${senderName}*: ${dto.Body}`;
+    const modifiedBody = trimmedBody ? `*${senderName}*: ${rawBody}` : '';
 
-    this.logger.log(`Group message: "${dto.Body}" (Author: ${senderName})`);
+    this.logger.log(`Group message: "${trimmedBody || '[no body]'}" (Author: ${senderName})`);
 
     // Persist inbound group message for context/history.
-    const triggerParse = this.parseAiTrigger(dto.Body);
-    if (triggerParse.triggered && triggerParse.stripped) {
-      // Persist inbound group message only when it is an AI-triggered message.
-      await this.recordInboundGroupMessage(
-        dto.ConversationSid,
-        dto.Author,
-        triggerParse.stripped,
-      ).catch((err) =>
-        this.logger.warn(
-          `Failed to record inbound group message: ${err?.message ?? err}`,
-        ),
-      );
-
-      this.logger.log(`AI trigger matched for group (trigger=${this.aiTrigger})`);
-      // Trigger chatbot response asynchronously (don't block the webhook)
-      this.triggerChatbotReply(
-        dto.ConversationSid,
-        triggerParse.stripped,
-        senderName,
-      ).catch((err) => this.logger.error('Chatbot reply failed', err));
+    if (trimmedBody) {
+      const triggerParse = this.parseAiTrigger(trimmedBody);
+      if (triggerParse.triggered && triggerParse.stripped) {
+        this.logger.log(`AI trigger matched for group (trigger=${this.aiTrigger})`);
+        // Debounce/merge: Twilio may send a second pre-event webhook carrying only Media.
+        this.enqueueGroupAi(
+          dto.ConversationSid,
+          dto.Author,
+          senderName,
+          triggerParse.stripped,
+          dto.Media,
+          dto.ChatServiceSid,
+        );
+      }
+      return { body: modifiedBody };
     }
 
-    return { body: modifiedBody };
+    // Media-only pre-event (no Body). Attach to the most recent pending triggered message.
+    if (dto.Media) {
+      this.enqueueGroupAi(
+        dto.ConversationSid,
+        dto.Author,
+        senderName,
+        null,
+        dto.Media,
+        dto.ChatServiceSid,
+      );
+    }
+
+    return { body: '' };
+  }
+
+  private async ensureGroupForConversation(conversationSid: string, author: string): Promise<void> {
+    const existing = await this.prisma.whatsAppGroup.findUnique({
+      where: { conversationSid },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    const phone = this.normalizeWhatsAppAddress(author) ?? author;
+
+    // If the author has exactly one ACTIVE membership, assume this ConversationSid belongs to it
+    // and repair the DB mapping. This prevents "no reply" when Twilio delivers events with a
+    // different ConversationSid than we have stored.
+    const actives = await this.prisma.whatsAppGroupMember.findMany({
+      where: { phone, status: WhatsAppGroupMemberStatus.ACTIVE },
+      include: { group: true },
+      take: 2,
+    });
+
+    if (actives.length === 1) {
+      const m = actives[0];
+      if (m.group.conversationSid !== conversationSid) {
+        await this.prisma.whatsAppGroup.update({
+          where: { id: m.groupId },
+          data: { conversationSid },
+        });
+        this.logger.warn(
+          `[group] Repaired conversationSid for group "${m.group.name}" → ${conversationSid}`,
+        );
+        return;
+      }
+    }
+
+    // Fallback: create a group record for this ConversationSid so the bot can respond.
+    let name = `Conversation ${conversationSid}`;
+    if (this.client) {
+      try {
+        const conv: any = await this.client.conversations.v1
+          .conversations(conversationSid)
+          .fetch();
+        if (conv?.friendlyName) name = String(conv.friendlyName);
+      } catch {
+        // ignore
+      }
+    }
+
+    const joinCode = await this.generateJoinCode();
+    await this.prisma.whatsAppGroup.create({
+      data: {
+        name,
+        joinCode,
+        conversationSid,
+      },
+    });
+    this.logger.warn(`[group] Created DB group for unknown ConversationSid ${conversationSid}`);
+  }
+
+  private async triggerChatbotReplyWithMediaParts(
+    conversationSid: string,
+    userMessage: string,
+    senderName: string,
+    mediaJson: string | null,
+    chatServiceSidHint: string | null,
+  ): Promise<void> {
+    const refs = this.parseConversationsMedia(mediaJson ?? undefined);
+    let imageUrls: string[] = [];
+
+    if (refs.length > 0) {
+      const chatServiceSid = await this.getChatServiceSidForConversation(
+        conversationSid,
+        chatServiceSidHint ?? undefined,
+      );
+      const accountSid = process.env.TWILIO_ACCOUNT_SID ?? '';
+      const authToken = process.env.TWILIO_AUTH_TOKEN ?? '';
+
+      if (!chatServiceSid) {
+        this.logger.warn('[media] Missing ChatServiceSid for conversation; skipping media ingest');
+      } else if (!accountSid || !authToken) {
+        this.logger.warn('[media] TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN missing; skipping media ingest');
+      } else {
+        const stored = await this.mediaService.storeTwilioConversationsMedia(
+          refs,
+          chatServiceSid,
+          accountSid,
+          authToken,
+        );
+        imageUrls = stored.map((s) => s.url);
+        this.logger.log(`[media] Stored ${imageUrls.length}/${refs.length} attachments for group`);
+        if (imageUrls.length > 0) {
+          this.logger.log(`[media] Public URLs: ${imageUrls.join(' ')}`);
+        }
+      }
+    }
+
+    await this.triggerChatbotReply(conversationSid, userMessage, senderName, imageUrls);
+  }
+
+  private enqueueGroupAi(
+    conversationSid: string,
+    author: string,
+    senderName: string,
+    userMessage: string | null,
+    mediaJson: string | undefined,
+    chatServiceSid: string | undefined,
+  ) {
+    const key = `${conversationSid}:${author}`;
+    const now = Date.now();
+    const list = this.pendingGroupAi.get(key) ?? [];
+
+    // Drop stale entries.
+    const fresh = list.filter((p) => now - p.createdAt <= this.groupAiPendingTtlMs);
+
+    const mergeCandidate = [...fresh]
+      .reverse()
+      .find((p) => {
+        if (p.flushed) return false;
+        // Prefer merging media into a pending message with text.
+        if (userMessage == null && mediaJson) return Boolean(p.userMessage) && !p.mediaJson;
+        // Prefer merging text into a media-only pending entry.
+        if (userMessage && !mediaJson) return !p.userMessage && Boolean(p.mediaJson);
+        // Otherwise merge into the most recent non-flushed.
+        return true;
+      });
+
+    if (mergeCandidate) {
+      if (userMessage && !mergeCandidate.userMessage) {
+        mergeCandidate.userMessage = userMessage;
+      }
+      if (mediaJson && !mergeCandidate.mediaJson) {
+        mergeCandidate.mediaJson = mediaJson;
+      }
+      mergeCandidate.senderName = senderName || mergeCandidate.senderName;
+      mergeCandidate.chatServiceSid = chatServiceSid || mergeCandidate.chatServiceSid;
+      this.pendingGroupAi.set(key, fresh);
+      return;
+    }
+
+    const id = randomBytes(6).toString('hex');
+    const pending: PendingGroupAi = {
+      id,
+      conversationSid,
+      author,
+      senderName,
+      userMessage: userMessage ?? null,
+      mediaJson: mediaJson ?? null,
+      chatServiceSid: chatServiceSid ?? null,
+      createdAt: now,
+      flushed: false,
+      timer: setTimeout(() => this.flushGroupAi(key, id), this.groupAiDebounceMs),
+    };
+    fresh.push(pending);
+    this.pendingGroupAi.set(key, fresh);
+  }
+
+  private flushGroupAi(key: string, id: string) {
+    const list = this.pendingGroupAi.get(key) ?? [];
+    const idx = list.findIndex((p) => p.id === id);
+    if (idx === -1) return;
+
+    const pending = list[idx];
+    pending.flushed = true;
+    list.splice(idx, 1);
+    if (list.length === 0) this.pendingGroupAi.delete(key);
+    else this.pendingGroupAi.set(key, list);
+
+    if (!pending.userMessage) {
+      return;
+    }
+
+    // Persist inbound group message only when it is an AI-triggered message.
+    this.recordInboundGroupMessage(
+      pending.conversationSid,
+      pending.author,
+      pending.userMessage,
+    ).catch((err) =>
+      this.logger.warn(
+        `Failed to record inbound group message: ${err?.message ?? err}`,
+      ),
+    );
+
+    this.triggerChatbotReplyWithMediaParts(
+      pending.conversationSid,
+      pending.userMessage,
+      pending.senderName,
+      pending.mediaJson,
+      pending.chatServiceSid,
+    ).catch((err) => this.logger.error('Chatbot reply failed', err));
   }
 
   getPublicConfig() {
@@ -897,20 +1161,43 @@ export class WhatsAppService {
     conversationSid: string,
     userMessage: string,
     senderName: string,
+    imageUrls: string[] = [],
   ): Promise<void> {
-    const group = await this.prisma.whatsAppGroup.findUnique({
-      where: { conversationSid },
-    });
+    let group = await this.prisma.whatsAppGroup.findUnique({ where: { conversationSid } });
 
-    if (!group?.chatbotEnabled) {
+    // This should normally already exist (created via our JOIN/CREATE flows), but Twilio sometimes
+    // delivers pre-event webhooks with a ConversationSid we haven't persisted yet.
+    if (!group) {
+      this.logger.warn(
+        `[group] No DB group for ConversationSid ${conversationSid}. Attempting auto-create/repair so the bot can reply...`,
+      );
+      await this.ensureGroupForConversation(conversationSid, '').catch((err) =>
+        this.logger.warn(
+          `[group] Auto-create/repair failed for ${conversationSid}: ${err?.message ?? err}`,
+        ),
+      );
+      group = await this.prisma.whatsAppGroup.findUnique({ where: { conversationSid } });
+    }
+
+    if (!group) {
+      this.logger.warn(
+        `[group] Still no DB group for ConversationSid ${conversationSid}. Skipping reply.`,
+      );
+      return;
+    }
+
+    if (!group.chatbotEnabled) {
+      this.logger.log(
+        `[group] Chatbot disabled for group "${group.name}" (${group.joinCode}); skipping reply.`,
+      );
       return;
     }
 
     let reply = '';
     try {
-      let prompt = userMessage;
+      let prompt = this.formatUserMessageWithImages(userMessage, imageUrls);
       try {
-        prompt = await this.buildGroupPrompt(group.id, senderName, userMessage);
+        prompt = await this.buildGroupPrompt(group.id, senderName, prompt);
       } catch (err: any) {
         this.logger.warn(
           `[group] Failed to build context prompt, falling back to raw message: ${err?.message ?? err}`,
@@ -1228,6 +1515,84 @@ export class WhatsAppService {
     return { triggered: true, stripped: rest };
   }
 
+  private formatUserMessageWithImages(userMessage: string, imageUrls: string[]): string {
+    if (!imageUrls || imageUrls.length === 0) return userMessage;
+    const listed = imageUrls.map((u, idx) => `- [${idx + 1}] ${u}`);
+    return [
+      `The user attached ${imageUrls.length} image(s)/file(s).`,
+      '',
+      'ATTACHMENTS (use these URLs as tool arguments):',
+      ...listed,
+      '',
+      'IMPORTANT:',
+      '- If the user is asking where a place is (for example: "unde e asta?", "where is this?"), you MUST call `identify_destination` first using:',
+      '  image_source = the attachment URL (pick [1] unless the user says otherwise).',
+      '- If the user wants booking extraction / deal-check, you MUST call `extract_booking_info` first using:',
+      '  image_path = the attachment URL (pick [1] unless the user says otherwise).',
+      '- Do not guess the destination from text alone when an image is attached.',
+      '',
+      userMessage,
+    ].join('\n');
+  }
+
+  private extractMessagingMediaItems(dto: IncomingMessageDto): { url: string; contentType: string }[] {
+    const numMedia = parseInt((dto.NumMedia ?? '0') as any, 10) || 0;
+    const items: { url: string; contentType: string }[] = [];
+    for (let i = 0; i < Math.min(10, numMedia); i += 1) {
+      const url = (dto as any)[`MediaUrl${i}`] as string | undefined;
+      if (!url) continue;
+      const contentType =
+        ((dto as any)[`MediaContentType${i}`] as string | undefined) ??
+        'application/octet-stream';
+      items.push({ url, contentType });
+    }
+    return items;
+  }
+
+  private parseConversationsMedia(mediaJson: string | undefined): { sid: string; contentType: string }[] {
+    if (!mediaJson) return [];
+    try {
+      const parsed = JSON.parse(mediaJson);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map((m: any) => ({
+          sid: String(m?.Sid ?? m?.sid ?? ''),
+          contentType: String(m?.ContentType ?? m?.contentType ?? 'application/octet-stream'),
+        }))
+        .filter((m: any) => Boolean(m.sid));
+    } catch (err) {
+      this.logger.warn(`[media] Failed to parse Conversations Media JSON`);
+      return [];
+    }
+  }
+
+  private async getChatServiceSidForConversation(
+    conversationSid: string,
+    hint?: string,
+  ): Promise<string | null> {
+    const hinted = (hint ?? '').trim();
+    if (hinted) return hinted;
+
+    const cached = this.conversationChatServiceSidCache.get(conversationSid);
+    if (cached) return cached;
+    if (!this.client) return null;
+
+    try {
+      const conv: any = await this.client.conversations.v1
+        .conversations(conversationSid)
+        .fetch();
+      const sid = String(conv?.chatServiceSid ?? conv?.chat_service_sid ?? '');
+      if (sid) {
+        this.conversationChatServiceSidCache.set(conversationSid, sid);
+        return sid;
+      }
+      return null;
+    } catch (err: any) {
+      this.logger.warn(`[media] Failed to fetch conversation to resolve ChatServiceSid: ${err?.message ?? err}`);
+      return null;
+    }
+  }
+
   private async recordDirectMessage(
     userPhone: string,
     direction: WhatsAppDirectMessageDirection,
@@ -1298,7 +1663,7 @@ export class WhatsAppService {
     const messages = await this.prisma.whatsAppGroupMessage.findMany({
       where: { groupId },
       orderBy: { createdAt: 'desc' },
-      take: 20,
+      take: 10,
       include: {
         senderUser: { select: { name: true, phone: true } },
       },
@@ -1334,7 +1699,7 @@ export class WhatsAppService {
     const messages = await this.prisma.whatsAppDirectMessage.findMany({
       where: { userPhone },
       orderBy: { createdAt: 'desc' },
-      take: 20,
+      take: 10,
     });
 
     const lines = messages
