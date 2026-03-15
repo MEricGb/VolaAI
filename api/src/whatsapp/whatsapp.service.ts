@@ -97,10 +97,16 @@ export class WhatsAppService {
 
     // Upload any media attachments to MinIO
     const numMedia = parseInt(dto.NumMedia ?? '0', 10);
+    this.logger.log(`[media] NumMedia=${numMedia} for ${from}`);
+
     const mediaItems: MediaItem[] = Array.from({ length: numMedia }, (_, i) => ({
       twilioUrl: (dto as any)[`MediaUrl${i}`] as string,
       contentType: ((dto as any)[`MediaContentType${i}`] as string) ?? 'application/octet-stream',
     })).filter(item => Boolean(item.twilioUrl));
+
+    if (mediaItems.length > 0) {
+      this.logger.log(`[media] ${mediaItems.length} media items to upload: ${mediaItems.map(m => m.contentType).join(', ')}`);
+    }
 
     let imageUrls: string[] = [];
     if (mediaItems.length > 0) {
@@ -113,6 +119,7 @@ export class WhatsAppService {
         accountSid,
         authToken,
       );
+      this.logger.log(`[media] Upload complete: ${imageUrls.length}/${mediaItems.length} succeeded → ${imageUrls.join(', ')}`);
     }
 
     this.logger.log(`User ${from} not in active group. Falling back to 1-to-1 AI.`);

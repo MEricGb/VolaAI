@@ -21,14 +21,20 @@ export class MediaService implements OnModuleInit {
   private readonly bucket: string;
   private readonly endpoint: string;
   private readonly port: number;
+  private readonly publicBaseUrl: string;
 
   constructor(private readonly prisma: PrismaService) {
     this.endpoint = process.env.MINIO_ENDPOINT ?? 'localhost';
     this.port = parseInt(process.env.MINIO_PORT ?? '9000', 10);
     this.bucket = process.env.MINIO_BUCKET ?? 'whatsapp-media';
+    // URL prefix used in MinIO URLs passed to agent/OCR.
+    // In deploy, set MINIO_PUBLIC_URL to a hostname reachable by all services.
+    this.publicBaseUrl = process.env.MINIO_PUBLIC_URL
+      ?? `http://${this.endpoint}:${this.port}`;
   }
 
   async onModuleInit() {
+    this.logger.log(`Connecting to MinIO at ${this.endpoint}:${this.port}, bucket=${this.bucket}`);
     this.client = new Minio.Client({
       endPoint: this.endpoint,
       port: this.port,
@@ -124,7 +130,7 @@ export class MediaService implements OnModuleInit {
       'Content-Type': contentType,
     });
 
-    return `http://${this.endpoint}:${this.port}/${this.bucket}/${key}`;
+    return `${this.publicBaseUrl}/${this.bucket}/${key}`;
   }
 
   private extensionFromContentType(contentType: string): string {
