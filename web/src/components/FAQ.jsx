@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import '../App.css';
 
-const FAQ = ({ aiTrigger = '@vola' }) => {
+const FAQ = ({ aiTrigger = '@vola', sandboxJoinPhrase = null }) => {
   const [openIndex, setOpenIndex] = useState(null);
 
   const toggle = (i) => setOpenIndex(openIndex === i ? null : i);
   const trigger = aiTrigger || '@vola';
+  const joinPhrase = (sandboxJoinPhrase || 'join declared-daughter').trim();
 
   const faqs = [
     {
       q: "First time setup",
-      a: 'Before the chatbot can reply, you must join once. Send: "join declared-daughter".',
+      a: `Before the chatbot can reply, you must join once. Send: "${joinPhrase}".`,
     },
     {
       q: "How do I talk to the AI?",
@@ -19,6 +20,10 @@ const FAQ = ({ aiTrigger = '@vola' }) => {
     {
       q: "How do I create or join a group?",
       a: 'Send: "JOIN team-force". If the group doesn\'t exist yet, it will be created automatically. Share the code with friends so they can join.',
+    },
+    {
+      q: "Can I be in multiple teams?",
+      a: 'Yes. Use "TEAMS" to list your teams and "USE team-force" to switch your active team. Switching only affects you (other members can keep using the team). Owner or not, it works the same.',
     },
     {
       q: "How do I leave a group?",

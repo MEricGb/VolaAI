@@ -29,6 +29,7 @@ export class WhatsAppService {
   private readonly messageServiceSid: string | null;
   private readonly contentSid: string | null;
   private readonly aiTrigger: string | null;
+  private readonly sandboxJoinPhrase: string | null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -42,6 +43,8 @@ export class WhatsAppService {
     this.messageServiceSid = process.env.TWILIO_MESSAGE_SERVICE_SID ?? null;
     this.contentSid = process.env.TWILIO_CONTENT_SID ?? null;
     this.aiTrigger = (process.env.TWILIO_AI_TRIGGER ?? '@vola').trim() || null;
+    this.sandboxJoinPhrase =
+      (process.env.TWILIO_SANDBOX_JOIN_PHRASE ?? '').trim() || null;
 
     if (accountSid && authToken && this.twilioWhatsAppNumber) {
       this.client = twilio(accountSid, authToken);
@@ -68,6 +71,21 @@ export class WhatsAppService {
     }
 
     await this.upsertUser(from, profileName);
+
+    // Handle TEAMS (list joined groups)
+    const teamsMatch = body.match(/^teams$/i);
+    if (teamsMatch) {
+      const reply = await this.listTeams(from);
+      return this.buildTwiml(reply);
+    }
+
+    // Handle USE <code> (set active group)
+    const useMatch = body.match(/^use\s+([a-z0-9-]+)$/i);
+    if (useMatch) {
+      const joinCode = this.normalizeJoinCode(useMatch[1]);
+      const reply = await this.useTeam(from, joinCode);
+      return this.buildTwiml(reply);
+    }
 
     // Handle JOIN <code>
     const joinMatch = body.match(/^join\s+([a-z0-9-]+)$/i);
@@ -231,6 +249,7 @@ export class WhatsAppService {
     return {
       whatsappNumber: this.twilioWhatsAppNumber?.replace(/^whatsapp:/, '') ?? null,
       aiTrigger: this.aiTrigger,
+      sandboxJoinPhrase: this.sandboxJoinPhrase,
     };
   }
 
@@ -548,6 +567,11 @@ export class WhatsAppService {
     joinCode: string,
     profileName: string | null,
   ): Promise<string> {
+    const hasOtherActive = await this.prisma.whatsAppGroupMember.findFirst({
+      where: { phone, status: WhatsAppGroupMemberStatus.ACTIVE },
+      select: { id: true, groupId: true },
+    });
+
     const membership = await this.prisma.whatsAppGroupMember.findFirst({
       where: {
         phone,
@@ -578,6 +602,9 @@ export class WhatsAppService {
 
         const friendlyName = this.humanizeJoinCode(joinCode);
         const conversationSid = await this.createTwilioConversation(friendlyName);
+
+        // Creating a new group should make it the active one: pause any other active memberships.
+        await this.pauseAllActiveTeams(phone);
 
         const group = await this.prisma.whatsAppGroup.create({
           data: {
@@ -616,24 +643,34 @@ export class WhatsAppService {
       }
 
       const user = await this.upsertUser(phone, profileName);
+      // If the user is already active in another team, join this one as PAUSED by default.
+      // They can switch with USE <code>.
+      const initialStatus = hasOtherActive
+        ? WhatsAppGroupMemberStatus.PAUSED
+        : WhatsAppGroupMemberStatus.ACTIVE;
+
       await this.prisma.whatsAppGroupMember.create({
         data: {
           groupId: existingGroup.id,
           phone,
           userId: user.id,
-          status: WhatsAppGroupMemberStatus.ACTIVE,
-          joinedAt: new Date(),
+          status: initialStatus,
+          joinedAt: initialStatus === WhatsAppGroupMemberStatus.ACTIVE ? new Date() : null,
         },
       });
 
-      await this.addConversationParticipant(existingGroup.conversationSid, phone);
-      await this.postConversationMessage(
-        existingGroup.conversationSid,
-        'system',
-        `${profileName || phone.replace('whatsapp:', '')} joined the group`,
-      );
+      if (initialStatus === WhatsAppGroupMemberStatus.ACTIVE) {
+        await this.pauseAllActiveTeams(phone, existingGroup.id);
+        await this.addConversationParticipant(existingGroup.conversationSid, phone);
+        await this.postConversationMessage(
+          existingGroup.conversationSid,
+          'system',
+          `${profileName || phone.replace('whatsapp:', '')} joined the group`,
+        );
+        return `Joined ${existingGroup.name}! Your messages will now be shared with the group. Reply LEAVE ${existingGroup.joinCode} to stop. To talk to the AI in the group, start messages with ${this.aiTrigger ?? '@vola'}.`;
+      }
 
-      return `Joined ${existingGroup.name}! Your messages will now be shared with the group. Reply LEAVE ${existingGroup.joinCode} to stop. To talk to the AI in the group, start messages with ${this.aiTrigger ?? '@vola'}.`;
+      return `Joined ${existingGroup.name}. You're in multiple teams — reply USE ${existingGroup.joinCode} to make this the active one.`;
     }
 
     if (membership.status === WhatsAppGroupMemberStatus.ACTIVE) {
@@ -644,7 +681,17 @@ export class WhatsAppService {
       return 'This group does not have an active conversation.';
     }
 
+    // If they're active elsewhere, keep this join as PAUSED unless they explicitly USE it.
+    if (hasOtherActive) {
+      await this.prisma.whatsAppGroupMember.update({
+        where: { id: membership.id },
+        data: { status: WhatsAppGroupMemberStatus.PAUSED },
+      });
+      return `Joined ${membership.group.name}. You're in multiple teams — reply USE ${membership.group.joinCode} to make this the active one.`;
+    }
+
     // Add as Twilio Conversation participant
+    await this.pauseAllActiveTeams(phone, membership.groupId);
     await this.addConversationParticipant(
       membership.group.conversationSid,
       phone,
@@ -669,6 +716,96 @@ export class WhatsAppService {
     });
 
     return `Joined ${membership.group.name}! Your messages will now be shared with the group. Reply LEAVE ${joinCode} to stop. To talk to the AI in the group, start messages with ${this.aiTrigger ?? '@vola'}.`;
+  }
+
+  private async listTeams(phone: string): Promise<string> {
+    const memberships = await this.prisma.whatsAppGroupMember.findMany({
+      where: {
+        phone,
+        status: { in: [WhatsAppGroupMemberStatus.ACTIVE, WhatsAppGroupMemberStatus.PAUSED] },
+      },
+      include: { group: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (memberships.length == 0) {
+      return 'You are not in any teams yet. Reply JOIN team-force (or any code) to create/join one.';
+    }
+
+    const lines = memberships.map((m) => {
+      const tag = m.status === WhatsAppGroupMemberStatus.ACTIVE ? 'ACTIVE' : 'PAUSED';
+      return `- ${m.group.name} (${tag}) => JOIN ${m.group.joinCode}`;
+    });
+
+    const active = memberships.find((m) => m.status === WhatsAppGroupMemberStatus.ACTIVE);
+    return [
+      'Your teams:',
+      ...lines,
+      '',
+      active
+        ? `Active team: ${active.group.name}.`
+        : 'No active team selected.',
+      'To switch: USE <team-code> (example: USE team-force)',
+    ].join('\n');
+  }
+
+  private async useTeam(phone: string, joinCode: string): Promise<string> {
+    const membership = await this.prisma.whatsAppGroupMember.findFirst({
+      where: {
+        phone,
+        status: { in: [WhatsAppGroupMemberStatus.ACTIVE, WhatsAppGroupMemberStatus.PAUSED] },
+        group: {
+          is: {
+            joinCode: { equals: joinCode, mode: Prisma.QueryMode.insensitive },
+          },
+        },
+      },
+      include: { group: true },
+    });
+
+    if (!membership) {
+      return `You're not in any team with code ${joinCode}. Reply TEAMS to see your teams.`;
+    }
+
+    if (!membership.group.conversationSid) {
+      return `Team "${membership.group.name}" does not have an active conversation.`;
+    }
+
+    // Activate this team. Add to the new conversation first so a Twilio error doesn't leave
+    // the user paused everywhere with no reply.
+    try {
+      await this.addConversationParticipant(membership.group.conversationSid, phone);
+    } catch (err: any) {
+      this.logger.warn(
+        `[teams] Failed to add participant while switching teams: ${err?.message ?? err}`,
+      );
+      return `Could not switch to ${membership.group.name} right now. Please try again in a minute.`;
+    }
+
+    // Pause any current ACTIVE teams and remove from their conversations.
+    await this.pauseAllActiveTeams(phone, membership.groupId);
+
+    const user = await this.upsertUser(phone, null);
+    await this.prisma.whatsAppGroupMember.update({
+      where: { id: membership.id },
+      data: {
+        status: WhatsAppGroupMemberStatus.ACTIVE,
+        userId: user.id,
+        joinedAt: membership.joinedAt ?? new Date(),
+      },
+    });
+
+    await this.postConversationMessage(
+      membership.group.conversationSid,
+      'system',
+      `${phone.replace('whatsapp:', '')} switched to this team`,
+    ).catch((err) =>
+      this.logger.warn(
+        `[teams] Failed to post switch announcement: ${err?.message ?? err}`,
+      ),
+    );
+
+    return `Active team set to ${membership.group.name}.`;
   }
 
   private async leaveConversation(
@@ -724,6 +861,34 @@ export class WhatsAppService {
       return `You left ${memberships[0].group.name}.`;
     }
     return `You left ${memberships.length} groups.`;
+  }
+
+  private async pauseAllActiveTeams(phone: string, exceptGroupId?: string): Promise<void> {
+    const actives = await this.prisma.whatsAppGroupMember.findMany({
+      where: {
+        phone,
+        status: WhatsAppGroupMemberStatus.ACTIVE,
+        ...(exceptGroupId ? { groupId: { not: exceptGroupId } } : {}),
+      },
+      include: { group: true },
+    });
+
+    for (const m of actives) {
+      if (m.group.conversationSid) {
+        await this.removeConversationParticipant(m.group.conversationSid, phone).catch((err) =>
+          this.logger.warn(`Failed to remove participant while pausing: ${err.message}`),
+        );
+      }
+    }
+
+    if (actives.length > 0) {
+      await this.prisma.whatsAppGroupMember.updateMany({
+        where: {
+          id: { in: actives.map((m) => m.id) },
+        },
+        data: { status: WhatsAppGroupMemberStatus.PAUSED },
+      });
+    }
   }
 
   // ─── Agent AI Chatbot ───────────────────────────────────────────────────
@@ -820,9 +985,18 @@ export class WhatsAppService {
         `Added participant ${phone} to Conversation ${conversationSid}`,
       );
     } catch (err: any) {
-      // Participant may already exist — that's fine
-      if (err?.code === 50433) {
-        this.logger.warn(`Participant ${phone} already in conversation`);
+      // Participant may already exist — treat that as success (idempotent add).
+      // Twilio's error codes/messages vary here, so match broadly.
+      const msg = String(err?.message ?? '');
+      const alreadyExists =
+        err?.code === 50433 ||
+        err?.status === 409 ||
+        /already exists/i.test(msg) ||
+        /binding for this participant/i.test(msg);
+      if (alreadyExists) {
+        this.logger.warn(
+          `Participant ${phone} already in Conversation ${conversationSid} (skipping add)`,
+        );
         return;
       }
       this.logger.error('Failed to add conversation participant', err);
