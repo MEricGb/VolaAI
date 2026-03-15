@@ -5,7 +5,12 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { WhatsAppGroupMember, WhatsAppGroupMemberStatus } from '@prisma/client';
+import {
+  Prisma,
+  WhatsAppDirectMessageDirection,
+  WhatsAppGroupMember,
+  WhatsAppGroupMemberStatus,
+} from '@prisma/client';
 import { randomBytes } from 'crypto';
 import twilio = require('twilio');
 import { PrismaService } from '../db/prisma.service';
@@ -23,6 +28,7 @@ export class WhatsAppService {
   private readonly twilioWhatsAppNumber: string | null;
   private readonly messageServiceSid: string | null;
   private readonly contentSid: string | null;
+  private readonly aiTrigger: string | null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -35,6 +41,7 @@ export class WhatsAppService {
     );
     this.messageServiceSid = process.env.TWILIO_MESSAGE_SERVICE_SID ?? null;
     this.contentSid = process.env.TWILIO_CONTENT_SID ?? null;
+    this.aiTrigger = (process.env.TWILIO_AI_TRIGGER ?? '@vola').trim() || null;
 
     if (accountSid && authToken && this.twilioWhatsAppNumber) {
       this.client = twilio(accountSid, authToken);
@@ -65,14 +72,16 @@ export class WhatsAppService {
     // Handle JOIN <code>
     const joinMatch = body.match(/^join\s+([a-z0-9-]+)$/i);
     if (joinMatch) {
-      const reply = await this.joinConversation(from, joinMatch[1].toUpperCase(), profileName);
+      const joinCode = this.normalizeJoinCode(joinMatch[1]);
+      const reply = await this.joinConversation(from, joinCode, profileName);
       return this.buildTwiml(reply);
     }
 
     // Handle LEAVE <code>
     const leaveMatch = body.match(/^leave(?:\s+([a-z0-9-]+))?$/i);
     if (leaveMatch) {
-      const reply = await this.leaveConversation(from, leaveMatch[1]?.toUpperCase());
+      const joinCode = leaveMatch[1] ? this.normalizeJoinCode(leaveMatch[1]) : undefined;
+      const reply = await this.leaveConversation(from, joinCode);
       return this.buildTwiml(reply);
     }
 
@@ -94,10 +103,38 @@ export class WhatsAppService {
     }
 
     this.logger.log(`User ${from} not in active group. Falling back to 1-to-1 AI.`);
+
+    // Enforce trigger for AI responses.
+    const triggerParse = this.parseAiTrigger(body);
+
+    if (!triggerParse.triggered) {
+      return this.buildTwiml(
+        `To talk to the AI, start your message with ${this.aiTrigger ?? '@vola'}, for example: ${this.aiTrigger ?? '@vola'} find me flights to Rome.`,
+      );
+    }
+
+    if (!triggerParse.stripped) {
+      return this.buildTwiml(
+        `Send ${this.aiTrigger ?? '@vola'} followed by your request, for example: ${this.aiTrigger ?? '@vola'} hotel in Paris under €150.`,
+      );
+    }
+
+    // Record 1-to-1 inbound message only when it is an AI-triggered message.
+    await this.recordDirectMessage(
+      from,
+      WhatsAppDirectMessageDirection.INBOUND,
+      triggerParse.stripped,
+      dto.MessageSid,
+    ).catch((err) =>
+      this.logger.warn(
+        `[1-to-1] Failed to record inbound message: ${err?.message ?? err}`,
+      ),
+    );
+
     // Fire agent call async — Twilio times out after ~15s so we return empty TwiML
     // immediately and send the reply via the Messages API once the agent responds.
-    const sessionId = profileName || from.replace('whatsapp:', '');
-    this.triggerAgentReply(from, sessionId, body).catch((err) =>
+    const sessionId = `dm:${from}`;
+    this.triggerAgentReply(from, sessionId, triggerParse.stripped).catch((err) =>
       this.logger.error('1-to-1 async agent reply failed', err),
     );
     return this.buildEmptyTwiml();
@@ -107,7 +144,15 @@ export class WhatsAppService {
     this.logger.log(`[1-to-1] Calling agent gRPC: session=${sessionId} message="${body}"`);
     let reply: string;
     try {
-      reply = await this.agentService.chat(sessionId, body);
+      let prompt = body;
+      try {
+        prompt = await this.buildDirectPrompt(to, body);
+      } catch (err: any) {
+        this.logger.warn(
+          `[1-to-1] Failed to build context prompt, falling back to raw message: ${err?.message ?? err}`,
+        );
+      }
+      reply = await this.agentService.chat(sessionId, prompt);
       this.logger.log(`[1-to-1] Agent replied (${reply.length} chars)`);
     } catch (err) {
       this.logger.error('Agent gRPC call failed (1-to-1)', err);
@@ -120,11 +165,19 @@ export class WhatsAppService {
     }
 
     this.logger.log(`[1-to-1] Sending reply via Messages API to ${to}`);
-    await this.client.messages.create({
+    const result = await this.client.messages.create({
       from: this.twilioWhatsAppNumber,
       to,
       body: reply,
     });
+    await this.recordDirectMessage(
+      to,
+      WhatsAppDirectMessageDirection.OUTBOUND,
+      reply,
+      result.sid,
+    ).catch((err) =>
+      this.logger.warn(`[1-to-1] Failed to record outbound message: ${err?.message ?? err}`),
+    );
     this.logger.log(`[1-to-1] Reply sent`);
   }
 
@@ -146,12 +199,30 @@ export class WhatsAppService {
     const senderName = await this.getSenderName(dto.Author);
     const modifiedBody = `*${senderName}*: ${dto.Body}`;
 
-    this.logger.log(`Triggering AI for group message: "${dto.Body}" (Author: ${senderName})`);
+    this.logger.log(`Group message: "${dto.Body}" (Author: ${senderName})`);
 
-    // Trigger chatbot response asynchronously (don't block the webhook)
-    this.triggerChatbotReply(dto.ConversationSid, dto.Body, senderName).catch(
-      (err) => this.logger.error('Chatbot reply failed', err),
-    );
+    // Persist inbound group message for context/history.
+    const triggerParse = this.parseAiTrigger(dto.Body);
+    if (triggerParse.triggered && triggerParse.stripped) {
+      // Persist inbound group message only when it is an AI-triggered message.
+      await this.recordInboundGroupMessage(
+        dto.ConversationSid,
+        dto.Author,
+        triggerParse.stripped,
+      ).catch((err) =>
+        this.logger.warn(
+          `Failed to record inbound group message: ${err?.message ?? err}`,
+        ),
+      );
+
+      this.logger.log(`AI trigger matched for group (trigger=${this.aiTrigger})`);
+      // Trigger chatbot response asynchronously (don't block the webhook)
+      this.triggerChatbotReply(
+        dto.ConversationSid,
+        triggerParse.stripped,
+        senderName,
+      ).catch((err) => this.logger.error('Chatbot reply failed', err));
+    }
 
     return { body: modifiedBody };
   }
@@ -159,6 +230,7 @@ export class WhatsAppService {
   getPublicConfig() {
     return {
       whatsappNumber: this.twilioWhatsAppNumber?.replace(/^whatsapp:/, '') ?? null,
+      aiTrigger: this.aiTrigger,
     };
   }
 
@@ -477,12 +549,91 @@ export class WhatsAppService {
     profileName: string | null,
   ): Promise<string> {
     const membership = await this.prisma.whatsAppGroupMember.findFirst({
-      where: { phone, group: { joinCode } },
+      where: {
+        phone,
+        group: {
+          is: {
+            joinCode: {
+              equals: joinCode,
+              mode: Prisma.QueryMode.insensitive,
+            },
+          },
+        },
+      },
       include: { group: true },
     });
 
+    // If the user wasn't explicitly invited, allow "public join" by code.
+    // If the group doesn't exist yet, create it on first JOIN.
     if (!membership) {
-      return `No invite found for code ${joinCode}.`;
+      const existingGroup = await this.prisma.whatsAppGroup.findFirst({
+        where: {
+          joinCode: { equals: joinCode, mode: Prisma.QueryMode.insensitive },
+        },
+      });
+
+      // First join creates the group (no curl needed).
+      if (!existingGroup) {
+        const owner = await this.upsertUser(phone, profileName);
+
+        const friendlyName = this.humanizeJoinCode(joinCode);
+        const conversationSid = await this.createTwilioConversation(friendlyName);
+
+        const group = await this.prisma.whatsAppGroup.create({
+          data: {
+            name: friendlyName,
+            // Store canonical join codes as lowercase; lookups are case-insensitive.
+            joinCode: joinCode.toLowerCase(),
+            conversationSid,
+            ownerId: owner.id,
+            members: {
+              create: [
+                {
+                  phone,
+                  userId: owner.id,
+                  status: WhatsAppGroupMemberStatus.ACTIVE,
+                  joinedAt: new Date(),
+                },
+              ],
+            },
+          },
+        });
+
+        if (group.conversationSid) {
+          await this.addConversationParticipant(group.conversationSid, phone);
+          await this.postConversationMessage(
+            group.conversationSid,
+            'system',
+            `${profileName || phone.replace('whatsapp:', '')} created the group`,
+          );
+        }
+
+        return `Created and joined ${group.name}! Share this with friends: JOIN ${group.joinCode}. Reply LEAVE ${group.joinCode} to stop. To talk to the AI in the group, start messages with ${this.aiTrigger ?? '@vola'}.`;
+      }
+
+      if (!existingGroup.conversationSid) {
+        return `Group "${existingGroup.name}" does not have an active conversation.`;
+      }
+
+      const user = await this.upsertUser(phone, profileName);
+      await this.prisma.whatsAppGroupMember.create({
+        data: {
+          groupId: existingGroup.id,
+          phone,
+          userId: user.id,
+          status: WhatsAppGroupMemberStatus.ACTIVE,
+          joinedAt: new Date(),
+        },
+      });
+
+      await this.addConversationParticipant(existingGroup.conversationSid, phone);
+      await this.postConversationMessage(
+        existingGroup.conversationSid,
+        'system',
+        `${profileName || phone.replace('whatsapp:', '')} joined the group`,
+      );
+
+      return `Joined ${existingGroup.name}! Your messages will now be shared with the group. Reply LEAVE ${existingGroup.joinCode} to stop. To talk to the AI in the group, start messages with ${this.aiTrigger ?? '@vola'}.`;
     }
 
     if (membership.status === WhatsAppGroupMemberStatus.ACTIVE) {
@@ -517,21 +668,30 @@ export class WhatsAppService {
       },
     });
 
-    return `Joined ${membership.group.name}! Your messages will now be shared with the group. Reply LEAVE ${joinCode} to stop.`;
+    return `Joined ${membership.group.name}! Your messages will now be shared with the group. Reply LEAVE ${joinCode} to stop. To talk to the AI in the group, start messages with ${this.aiTrigger ?? '@vola'}.`;
   }
 
   private async leaveConversation(
     phone: string,
     joinCode?: string,
   ): Promise<string> {
-    const where = {
-      phone,
-      status: WhatsAppGroupMemberStatus.ACTIVE,
-      ...(joinCode ? { group: { joinCode } } : {}),
-    };
-
     const memberships = await this.prisma.whatsAppGroupMember.findMany({
-      where,
+      where: {
+        phone,
+        status: WhatsAppGroupMemberStatus.ACTIVE,
+        ...(joinCode
+          ? {
+              group: {
+                is: {
+                  joinCode: {
+                    equals: joinCode,
+                    mode: Prisma.QueryMode.insensitive,
+                  },
+                },
+              },
+            }
+          : {}),
+      },
       include: { group: true },
     });
 
@@ -583,8 +743,19 @@ export class WhatsAppService {
 
     let reply = '';
     try {
-      this.logger.log(`[group] Calling agent gRPC: session=${senderName} message="${userMessage}"`);
-      reply = await this.agentService.chat(senderName, userMessage);
+      let prompt = userMessage;
+      try {
+        prompt = await this.buildGroupPrompt(group.id, senderName, userMessage);
+      } catch (err: any) {
+        this.logger.warn(
+          `[group] Failed to build context prompt, falling back to raw message: ${err?.message ?? err}`,
+        );
+      }
+      const sessionId = `group:${group.joinCode}`;
+      this.logger.log(
+        `[group] Calling agent gRPC: session=${sessionId} sender=${senderName} message="${userMessage}"`,
+      );
+      reply = await this.agentService.chat(sessionId, prompt);
       this.logger.log(`[group] Agent replied (${reply.length} chars)`);
     } catch (err) {
       this.logger.error('Agent gRPC call failed', err);
@@ -733,6 +904,7 @@ export class WhatsAppService {
         `You were added to "${groupName}".`,
         `Reply JOIN ${joinCode} to start receiving group messages.`,
         'After joining, any text you send here will be shared with the group.',
+        `To talk to the AI, start messages with ${this.aiTrigger ?? '@vola'}.`,
       ].join(' ');
 
       await this.client.messages.create({
@@ -813,6 +985,7 @@ export class WhatsAppService {
 
   private async generateJoinCode(): Promise<string> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
+      // Human-friendly short code; case-insensitive comparisons everywhere.
       const joinCode = randomBytes(3).toString('hex').toUpperCase();
       const existing = await this.prisma.whatsAppGroup.findUnique({
         where: { joinCode },
@@ -826,5 +999,185 @@ export class WhatsAppService {
     throw new InternalServerErrorException(
       'Could not generate a unique join code',
     );
+  }
+
+  private normalizeJoinCode(value: string): string {
+    const trimmed = (value || '').trim();
+    // JOIN regex already restricts to [a-z0-9-]+, but keep this robust for future commands.
+    const normalized = trimmed
+      .toLowerCase()
+      .replace(/[\s_]+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    if (!normalized) {
+      throw new BadRequestException('Join code is required');
+    }
+
+    if (normalized.length > 48) {
+      throw new BadRequestException('Join code is too long (max 48 chars)');
+    }
+
+    return normalized;
+  }
+
+  private humanizeJoinCode(joinCode: string): string {
+    // declared-daughter -> Declared Daughter
+    return joinCode
+      .split('-')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  private parseAiTrigger(body: string): { triggered: boolean; stripped: string } {
+    const trigger = this.aiTrigger;
+    if (!trigger) {
+      return { triggered: true, stripped: body.trim() };
+    }
+
+    const trimmed = (body || '').trim();
+    if (!trimmed) {
+      return { triggered: false, stripped: '' };
+    }
+
+    const triggerLower = trigger.toLowerCase();
+    const trimmedLower = trimmed.toLowerCase();
+
+    if (!trimmedLower.startsWith(triggerLower)) {
+      return { triggered: false, stripped: trimmed };
+    }
+
+    // Drop the trigger token and common separators: "@vola:", "@vola -", "@vola," etc.
+    const rest = trimmed.slice(trigger.length).replace(/^[\s,:-]+/, '').trim();
+    return { triggered: true, stripped: rest };
+  }
+
+  private async recordDirectMessage(
+    userPhone: string,
+    direction: WhatsAppDirectMessageDirection,
+    body: string,
+    twilioMessageSid?: string,
+  ): Promise<void> {
+    try {
+      await this.prisma.whatsAppDirectMessage.create({
+        data: {
+          userPhone,
+          direction,
+          body,
+          twilioMessageSid: twilioMessageSid || null,
+        },
+      });
+    } catch (err: any) {
+      // Twilio may retry webhooks; if we already recorded this message SID, ignore.
+      if (twilioMessageSid && err?.code === 'P2002') {
+        return;
+      }
+      throw err;
+    }
+  }
+
+  private async recordInboundGroupMessage(
+    conversationSid: string,
+    author: string,
+    body: string,
+  ): Promise<void> {
+    const group = await this.prisma.whatsAppGroup.findUnique({
+      where: { conversationSid },
+      select: { id: true },
+    });
+    if (!group) {
+      return;
+    }
+
+    const phone = this.normalizeWhatsAppAddress(author) ?? author;
+    const user = phone.startsWith('whatsapp:')
+      ? await this.upsertUser(phone, null)
+      : null;
+
+    await this.prisma.whatsAppGroupMessage.create({
+      data: {
+        groupId: group.id,
+        senderUserId: user?.id,
+        senderPhone: phone,
+        body,
+      },
+    });
+
+    if (phone.startsWith('whatsapp:')) {
+      await this.prisma.whatsAppGroupMember.updateMany({
+        where: {
+          groupId: group.id,
+          phone,
+        },
+        data: { lastInboundAt: new Date() },
+      });
+    }
+  }
+
+  private async buildGroupPrompt(
+    groupId: string,
+    senderName: string,
+    userMessage: string,
+  ): Promise<string> {
+    const messages = await this.prisma.whatsAppGroupMessage.findMany({
+      where: { groupId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      include: {
+        senderUser: { select: { name: true, phone: true } },
+      },
+    });
+
+    const lines = messages
+      .reverse()
+      .map((m) => {
+        if (m.senderPhone === 'chatbot') {
+          return `Assistant: ${m.body}`;
+        }
+        if (m.senderPhone === 'system') {
+          return `System: ${m.body}`;
+        }
+        const display =
+          m.senderUser?.name || m.senderPhone.replace(/^whatsapp:/, '');
+        const parsed = this.parseAiTrigger(m.body);
+        const cleanBody = parsed.triggered ? parsed.stripped : m.body;
+        return `User (${display}): ${cleanBody}`;
+      });
+
+    return [
+      '__API_CTX__',
+      '<<HISTORY>>',
+      ...lines,
+      '<<USER>>',
+      // Keep this as raw user message; agent server will format it.
+      userMessage,
+    ].join('\n');
+  }
+
+  private async buildDirectPrompt(userPhone: string, userMessage: string): Promise<string> {
+    const messages = await this.prisma.whatsAppDirectMessage.findMany({
+      where: { userPhone },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+
+    const lines = messages
+      .reverse()
+      .map((m) => {
+        const role = m.direction === WhatsAppDirectMessageDirection.INBOUND ? 'User' : 'Assistant';
+        const parsed = role === 'User' ? this.parseAiTrigger(m.body) : { triggered: false, stripped: m.body };
+        const cleanBody = role === 'User' && parsed.triggered ? parsed.stripped : m.body;
+        return `${role}: ${cleanBody}`;
+      });
+
+    return [
+      '__API_CTX__',
+      '<<HISTORY>>',
+      ...lines,
+      '<<USER>>',
+      userMessage,
+    ].join('\n');
   }
 }

@@ -2,9 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Plane, Menu, X } from 'lucide-react';
 import '../App.css';
 
-const waLink = (number) => `https://wa.me/${number.replace(/^\+/, '')}`;
+const waLink = (number, text) =>
+  `https://wa.me/${number.replace(/^\+/, '')}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
 
-const Navbar = ({ whatsAppNumber }) => {
+const withTrigger = (trigger, text) =>
+  (trigger ? `${trigger} ${text}` : text).trim();
+
+const Navbar = ({ whatsAppNumber, aiTrigger }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -27,7 +31,11 @@ const Navbar = ({ whatsAppNumber }) => {
         <a href="#features" className="nav-link">Features</a>
         <a href="#faq" className="nav-link">FAQ</a>
         <a
-          href={whatsAppNumber ? waLink(whatsAppNumber) : '#'}
+          href={
+            whatsAppNumber
+              ? waLink(whatsAppNumber, withTrigger(aiTrigger, "Hi! I'd like to plan a trip."))
+              : '#'
+          }
           target="_blank"
           rel="noreferrer"
           className="btn btn-cta"
@@ -56,7 +64,11 @@ const Navbar = ({ whatsAppNumber }) => {
           <a href="#features" className="nav-link" onClick={close}>Features</a>
           <a href="#faq" className="nav-link" onClick={close}>FAQ</a>
           <a
-            href={whatsAppNumber ? waLink(whatsAppNumber) : '#'}
+            href={
+              whatsAppNumber
+                ? waLink(whatsAppNumber, withTrigger(aiTrigger, "Hi! I'd like to plan a trip."))
+                : '#'
+            }
             target="_blank"
             rel="noreferrer"
             className="btn btn-cta"
