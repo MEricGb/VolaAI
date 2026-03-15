@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
         .init();
 
     let config = Arc::new(Config::from_env()?);
-    let addr = format!("[::1]:{}", config.grpc_port)
+    let addr = format!("[::]:{}", config.grpc_port)
         .parse()
         .context("Invalid gRPC address")?;
 
