@@ -303,9 +303,3 @@ Still partial or scaffolded:
 - each service has its own Dockerfile at the repo root
 - several services include `railway.toml`
 - the API deployment runs Prisma migrations before starting the server
-
-## Additional notes
-
-- backend-specific notes live in [api/README.md](/Users/ericmoroiu/repos/vibehack-2026/api/README.md)
-- protobuf contracts live in `proto/`
-- the repo also includes local images that can be used for OCR and destination testing
