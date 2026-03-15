@@ -12,7 +12,6 @@ import { PrismaService } from '../db/prisma.service';
 import { AddGroupMembersDto } from './dto/add-group-members.dto';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { AgentService } from '../agent/agent.service';
-import { MediaService, MediaItem } from '../media/media.service';
 import { IncomingMessageDto } from './dto/incoming-message.dto';
 import { SendGroupMessageDto } from './dto/send-group-message.dto';
 import { ConversationPreEventDto } from './dto/conversation-pre-event.dto';
@@ -28,7 +27,6 @@ export class WhatsAppService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly agentService: AgentService,
-    private readonly mediaService: MediaService,
   ) {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -95,48 +93,21 @@ export class WhatsAppService {
       return '';
     }
 
-    // Upload any media attachments to MinIO
-    const numMedia = parseInt(dto.NumMedia ?? '0', 10);
-    this.logger.log(`[media] NumMedia=${numMedia} for ${from}`);
-
-    const mediaItems: MediaItem[] = Array.from({ length: numMedia }, (_, i) => ({
-      twilioUrl: (dto as any)[`MediaUrl${i}`] as string,
-      contentType: ((dto as any)[`MediaContentType${i}`] as string) ?? 'application/octet-stream',
-    })).filter(item => Boolean(item.twilioUrl));
-
-    if (mediaItems.length > 0) {
-      this.logger.log(`[media] ${mediaItems.length} media items to upload: ${mediaItems.map(m => m.contentType).join(', ')}`);
-    }
-
-    let imageUrls: string[] = [];
-    if (mediaItems.length > 0) {
-      const accountSid = process.env.TWILIO_ACCOUNT_SID ?? '';
-      const authToken = process.env.TWILIO_AUTH_TOKEN ?? '';
-      imageUrls = await this.mediaService.uploadFromTwilio(
-        mediaItems,
-        from,
-        null,
-        accountSid,
-        authToken,
-      );
-      this.logger.log(`[media] Upload complete: ${imageUrls.length}/${mediaItems.length} succeeded → ${imageUrls.join(', ')}`);
-    }
-
     this.logger.log(`User ${from} not in active group. Falling back to 1-to-1 AI.`);
     // Fire agent call async — Twilio times out after ~15s so we return empty TwiML
     // immediately and send the reply via the Messages API once the agent responds.
     const sessionId = profileName || from.replace('whatsapp:', '');
-    this.triggerAgentReply(from, sessionId, body, imageUrls).catch((err) =>
+    this.triggerAgentReply(from, sessionId, body).catch((err) =>
       this.logger.error('1-to-1 async agent reply failed', err),
     );
     return this.buildEmptyTwiml();
   }
 
-  private async triggerAgentReply(to: string, sessionId: string, body: string, imageUrls: string[] = []): Promise<void> {
-    this.logger.log(`[1-to-1] Calling agent gRPC: session=${sessionId} message="${body}" images=${imageUrls.length}`);
+  private async triggerAgentReply(to: string, sessionId: string, body: string): Promise<void> {
+    this.logger.log(`[1-to-1] Calling agent gRPC: session=${sessionId} message="${body}"`);
     let reply: string;
     try {
-      reply = await this.agentService.chat(sessionId, body, imageUrls);
+      reply = await this.agentService.chat(sessionId, body);
       this.logger.log(`[1-to-1] Agent replied (${reply.length} chars)`);
     } catch (err) {
       this.logger.error('Agent gRPC call failed (1-to-1)', err);

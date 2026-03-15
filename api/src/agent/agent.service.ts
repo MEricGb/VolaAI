@@ -8,7 +8,6 @@ import { join } from 'path';
 export interface ChatRequest {
   session_id: string;
   user_message: string;
-  image_urls: string[];
 }
 
 export interface ChatResponse {
@@ -68,11 +67,11 @@ export class AgentService implements OnModuleInit, OnModuleDestroy {
    * Send a user message to the agent and receive a reply.
    * Uses a 2-minute deadline — enough for the LLM to respond.
    */
-  chat(sessionId: string, userMessage: string, imageUrls: string[] = []): Promise<string> {
+  chat(sessionId: string, userMessage: string): Promise<string> {
     const deadline = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes
     return new Promise((resolve, reject) => {
       this.client.Chat(
-        { session_id: sessionId, user_message: userMessage, image_urls: imageUrls },
+        { session_id: sessionId, user_message: userMessage },
         new grpc.Metadata(),
         { deadline },
         (err, res) => {

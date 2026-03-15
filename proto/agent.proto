@@ -9,7 +9,6 @@ service AgentService {
 message ChatRequest {
   string session_id    = 1;  // identifies the conversation session
   string user_message  = 2;  // raw user input
-  repeated string image_urls = 3;  // internal MinIO URLs; empty for text-only messages
 }
 
 message ChatResponse {

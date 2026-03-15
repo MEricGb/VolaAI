@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\tocr.proto\x12\x03ocr\"S\n\x15\x45xtractBookingRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x11\n\timage_url\x18\x02 \x01(\t\x12\x13\n\x0bocr_backend\x18\x03 \x01(\t\"\xac\x01\n\x16\x45xtractBookingResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07summary\x18\x02 \x01(\t\x12\"\n\x15\x63omparison_query_json\x18\x03 \x01(\tH\x00\x88\x01\x01\x12\x12\n\x05\x65rror\x18\x04 \x01(\tH\x01\x88\x01\x01\x12\x14\n\x0craw_ocr_text\x18\x05 \x01(\tB\x18\n\x16_comparison_query_jsonB\x08\n\x06_error2[\n\nOcrService\x12M\n\x12\x45xtractBookingInfo\x12\x1a.ocr.ExtractBookingRequest\x1a\x1b.ocr.ExtractBookingResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\tocr.proto\x12\x03ocr\"T\n\x15\x45xtractBookingRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x12\n\nimage_path\x18\x02 \x01(\t\x12\x13\n\x0bocr_backend\x18\x03 \x01(\t\"\xac\x01\n\x16\x45xtractBookingResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07summary\x18\x02 \x01(\t\x12\"\n\x15\x63omparison_query_json\x18\x03 \x01(\tH\x00\x88\x01\x01\x12\x12\n\x05\x65rror\x18\x04 \x01(\tH\x01\x88\x01\x01\x12\x14\n\x0craw_ocr_text\x18\x05 \x01(\tB\x18\n\x16_comparison_query_jsonB\x08\n\x06_error2[\n\nOcrService\x12M\n\x12\x45xtractBookingInfo\x12\x1a.ocr.ExtractBookingRequest\x1a\x1b.ocr.ExtractBookingResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,9 +32,9 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'ocr_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_EXTRACTBOOKINGREQUEST']._serialized_start=18
-  _globals['_EXTRACTBOOKINGREQUEST']._serialized_end=101
-  _globals['_EXTRACTBOOKINGRESPONSE']._serialized_start=104
-  _globals['_EXTRACTBOOKINGRESPONSE']._serialized_end=276
-  _globals['_OCRSERVICE']._serialized_start=278
-  _globals['_OCRSERVICE']._serialized_end=369
+  _globals['_EXTRACTBOOKINGREQUEST']._serialized_end=102
+  _globals['_EXTRACTBOOKINGRESPONSE']._serialized_start=105
+  _globals['_EXTRACTBOOKINGRESPONSE']._serialized_end=277
+  _globals['_OCRSERVICE']._serialized_start=279
+  _globals['_OCRSERVICE']._serialized_end=370
 # @@protoc_insertion_point(module_scope)

@@ -17,12 +17,9 @@ import json
 import logging
 import os
 import sys
-import tempfile
 from concurrent import futures
-from urllib.parse import urlparse
 
 import grpc
-from minio import Minio
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GENERATED_DIR = os.path.join(BASE_DIR, "generated")
@@ -38,45 +35,6 @@ log = logging.getLogger(__name__)
 
 GRPC_PORT = 50053
 VALID_BACKENDS = {"mock", "tesseract", "google", "openai", "featherless"}
-
-
-def _init_minio_client() -> Minio:
-    """Create a MinIO client from environment variables."""
-    endpoint = os.environ.get("MINIO_ENDPOINT", "localhost")
-    port = os.environ.get("MINIO_PORT", "9000")
-    access_key = os.environ.get("MINIO_ACCESS_KEY", "admin")
-    secret_key = os.environ.get("MINIO_SECRET_KEY", "password")
-    return Minio(
-        f"{endpoint}:{port}",
-        access_key=access_key,
-        secret_key=secret_key,
-        secure=False,
-    )
-
-
-def _extract_bucket_and_key(image_url: str) -> tuple[str, str]:
-    """Parse a MinIO URL into (bucket, object_key).
-    e.g. 'http://minio:9000/whatsapp-media/uploads/phone/ts-0.jpg'
-      -> ('whatsapp-media', 'uploads/phone/ts-0.jpg')
-    """
-    parsed = urlparse(image_url)
-    # path is '/whatsapp-media/uploads/phone/ts-0.jpg'
-    parts = parsed.path.lstrip('/').split('/', 1)
-    if len(parts) < 2:
-        raise ValueError(f"Cannot parse bucket/key from URL: {image_url}")
-    return parts[0], parts[1]
-
-
-def _download_to_temp(minio_client: Minio, image_url: str) -> str:
-    """Download an image from MinIO to a temp file. Returns the temp file path."""
-    bucket, key = _extract_bucket_and_key(image_url)
-    ext = key.rstrip('/').split('.')[-1].split('?')[0]
-    if not ext or len(ext) > 5:
-        ext = 'jpg'
-    with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as f:
-        tmp_path = f.name
-    minio_client.fget_object(bucket, key, tmp_path)
-    return tmp_path
 
 
 def _summary_from_payload(payload) -> str:
@@ -103,18 +61,12 @@ def _summary_from_payload(payload) -> str:
 
 
 class OcrServicer(ocr_pb2_grpc.OcrServiceServicer):
-    def __init__(self):
-        self.minio_client = _init_minio_client()
-        log.info("MinIO client initialized: %s:%s",
-                 os.environ.get("MINIO_ENDPOINT", "localhost"),
-                 os.environ.get("MINIO_PORT", "9000"))
-
     def ExtractBookingInfo(self, request, context):
         session_id = request.session_id
-        image_url = request.image_url
+        image_path = request.image_path
         backend = (request.ocr_backend or "mock").strip().lower()
 
-        log.info("[%s] OCR request url=%r backend=%s", session_id, image_url, backend)
+        log.info("[%s] OCR request path=%r backend=%s", session_id, image_path, backend)
 
         if backend not in VALID_BACKENDS:
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
@@ -127,24 +79,10 @@ class OcrServicer(ocr_pb2_grpc.OcrServiceServicer):
                 error=f"Unsupported ocr_backend: {backend}",
             )
 
-        # Download image from MinIO URL to a local temp file
-        tmp_path = None
-        try:
-            tmp_path = _download_to_temp(self.minio_client, image_url)
-        except Exception as exc:
-            log.exception("[%s] Failed to download image from %r", session_id, image_url)
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(f"Image download failed: {exc}")
-            return ocr_pb2.ExtractBookingResponse(
-                success=False,
-                summary="",
-                error=f"Image download failed: {exc}",
-            )
-
         try:
             provider = get_provider(backend)
             service = TripCheckService(ocr_provider=provider)
-            payload = service.process_image(tmp_path)
+            payload = service.process_image(image_path)
         except Exception as exc:
             log.exception("[%s] OCR pipeline failed", session_id)
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -154,9 +92,6 @@ class OcrServicer(ocr_pb2_grpc.OcrServiceServicer):
                 summary="",
                 error=f"OCR pipeline failed: {exc}",
             )
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
 
         if not payload.success:
             return ocr_pb2.ExtractBookingResponse(

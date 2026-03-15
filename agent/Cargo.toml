@@ -20,7 +20,6 @@ base64             = "0.22"
 image              = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 chrono = "0.4.44"
 futures = "0.3"
-rust-s3 = { version = "0.35", default-features = false, features = ["tokio-rustls-tls"] }
 
 [build-dependencies]
 tonic-build = "0.12"

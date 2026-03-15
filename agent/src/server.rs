@@ -69,7 +69,6 @@ impl AgentService for AgentServiceImpl {
             .process(
                 &session_id,
                 &contextual_message,
-                &req.image_urls,
             )
             .await
             .map_err(Status::from)?;
