@@ -152,8 +152,8 @@ export class MediaService implements OnModuleInit {
         const stored = await this.storeBuffer(buf, ref.contentType);
         out.push(stored);
       } catch (err: any) {
-        this.logger.warn(
-          `[media] Failed to ingest Twilio Conversations media ${i}: ${err?.message ?? err}`,
+        this.logger.error(
+          `[media] Failed to ingest Twilio Conversations media ${i} after retries: ${err?.message ?? err}`,
         );
       }
     }
@@ -244,26 +244,40 @@ export class MediaService implements OnModuleInit {
     accountSid: string,
     authToken: string,
   ): Promise<string> {
+    const maxRetries = 3;
+    const baseDelayMs = 1000;
     let lastErr: any = null;
-    for (const base of this.mcsBaseUrls) {
-      try {
-        const infoUrl = `${base}/v1/Services/${chatServiceSid}/Media/${mediaSid}`;
-        const basic = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
-        const res = await fetch(infoUrl, {
-          headers: {
-            Authorization: `Basic ${basic}`,
-            'User-Agent': 'vibehack-2026-api/1.0 (media-ingest)',
-            Accept: 'application/json',
-          },
-        });
-        if (!res.ok) throw new Error(`MCS fetch failed (${res.status})`);
-        const data: any = await res.json();
-        const link = data?.links?.content_direct_temporary as string | undefined;
-        if (!link) throw new Error('MCS response missing links.content_direct_temporary');
-        if (link.startsWith('http://') || link.startsWith('https://')) return link;
-        return `${base}${link.startsWith('/') ? '' : '/'}${link}`;
-      } catch (err) {
-        lastErr = err;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      if (attempt > 0) {
+        const delay = baseDelayMs * Math.pow(2, attempt - 1);
+        this.logger.warn(
+          `[media] MCS retry ${attempt}/${maxRetries - 1} for media ${mediaSid} after ${delay}ms`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      }
+
+      for (const base of this.mcsBaseUrls) {
+        try {
+          const infoUrl = `${base}/v1/Services/${chatServiceSid}/Media/${mediaSid}`;
+          const basic = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+          const res = await fetch(infoUrl, {
+            headers: {
+              Authorization: `Basic ${basic}`,
+              'User-Agent': 'vibehack-2026-api/1.0 (media-ingest)',
+              Accept: 'application/json',
+            },
+          });
+          if (res.status >= 500) throw new Error(`MCS fetch failed (${res.status})`);
+          if (!res.ok) throw new Error(`MCS fetch failed (${res.status})`);
+          const data: any = await res.json();
+          const link = data?.links?.content_direct_temporary as string | undefined;
+          if (!link) throw new Error('MCS response missing links.content_direct_temporary');
+          if (link.startsWith('http://') || link.startsWith('https://')) return link;
+          return `${base}${link.startsWith('/') ? '' : '/'}${link}`;
+        } catch (err) {
+          lastErr = err;
+        }
       }
     }
     throw lastErr ?? new Error('Failed to resolve MCS temporary URL');
