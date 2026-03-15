@@ -112,8 +112,11 @@ impl OrchestrationEngine {
             .build()
             .map_err(|e| AppError::Llm(format!("LLM client init failed: {e}")))?;
 
+        info!("LLM client built, detecting language");
+
         let language = if let Some(lang) = preferred_language {
             if should_refresh_cached_language(lang, original_user_message) {
+                info!("Refreshing cached language");
                 self
                     .detect_user_language(&client, original_user_message)
                     .await
@@ -134,9 +137,12 @@ impl OrchestrationEngine {
                 })
         };
 
+        info!(%language, "Language detected");
+
         let working_message = if language.eq_ignore_ascii_case("en") {
             user_message.to_string()
         } else {
+            info!("Translating input to English");
             self.translate_text(
                 &client,
                 &language,
@@ -150,6 +156,8 @@ impl OrchestrationEngine {
                 user_message.to_string()
             })
         };
+
+        info!(model = %self.config.featherless_model, "Calling main agent LLM");
 
         let agent = client
             .agent(&self.config.featherless_model)
@@ -171,11 +179,18 @@ impl OrchestrationEngine {
         let reply = agent
             .prompt(&working_message)
             .await
-            .map_err(|e| AppError::Llm(e.to_string()))?;
+            .map_err(|e| {
+                warn!(error = %e, "Main agent LLM call failed");
+                AppError::Llm(e.to_string())
+            })?;
+
+        info!(reply_len = reply.len(), "Agent LLM responded");
 
         if language.eq_ignore_ascii_case("en") {
             return Ok(ProcessResult { reply, language });
         }
+
+        info!("Translating reply back to {language}");
 
         let localized_reply = self
             .translate_text(
@@ -190,6 +205,8 @@ impl OrchestrationEngine {
                 warn!(error = %e, "Output translation failed; returning English reply");
                 reply.clone()
             });
+
+        info!("Request complete");
 
         Ok(ProcessResult {
             reply: localized_reply,
