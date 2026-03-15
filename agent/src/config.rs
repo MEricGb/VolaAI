@@ -9,6 +9,7 @@ pub struct Config {
     pub featherless_api_key:  String,
     pub featherless_base_url: String,
     pub featherless_model:    String,
+    pub fast_model:           String,
     pub destination_id_model: String,
     pub grpc_port:            u16,
     pub scraper_grpc_url:     String,
@@ -28,6 +29,9 @@ impl Config {
                 .unwrap_or_else(|_| "https://api.featherless.ai/v1".to_string()),
 
             featherless_model: featherless_model.clone(),
+
+            fast_model: std::env::var("FAST_MODEL")
+                .unwrap_or_else(|_| "Qwen/Qwen2.5-7B-Instruct".to_string()),
 
             destination_id_model: std::env::var("DESTINATION_ID_MODEL")
                 .unwrap_or_else(|_| "Qwen/Qwen3-VL-30B-A3B-Instruct".to_string()),

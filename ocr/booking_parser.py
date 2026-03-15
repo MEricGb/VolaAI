@@ -28,17 +28,25 @@ CITY_TO_IATA: dict[str, str] = {
     "barcelona": "BCN",
     "paris": "CDG", "paris cdg": "CDG", "paris orly": "ORY",
     "london": "LHR", "london heathrow": "LHR", "london gatwick": "LGW",
+    "luton": "LTN", "stansted": "STN",
+    "manchester": "MAN", "edinburgh": "EDI", "birmingham": "BHX",
     "amsterdam": "AMS",
     "rome": "FCO", "roma": "FCO",
     "milan": "MXP", "milano": "MXP",
+    "venice": "VCE", "venezia": "VCE",
+    "naples": "NAP", "napoli": "NAP",
     "madrid": "MAD",
     "lisbon": "LIS", "lisboa": "LIS",
+    "porto": "OPO",
     "berlin": "BER",
     "frankfurt": "FRA",
     "munich": "MUC", "münchen": "MUC",
-    "vienna": "VIE", "wien": "VIE",
+    "dusseldorf": "DUS", "düsseldorf": "DUS",
+    "hamburg": "HAM",
+    "cologne": "CGN",
     "vienna": "VIE", "wien": "VIE",
     "zurich": "ZRH", "zürich": "ZRH",
+    "geneva": "GVA",
     "brussels": "BRU", "bruxelles": "BRU",
     "dublin": "DUB",
     "stockholm": "ARN",
@@ -57,6 +65,14 @@ CITY_TO_IATA: dict[str, str] = {
     "heraklion": "HER", "crete": "HER",
     "rhodes": "RHO",
     "corfu": "CFU",
+    "belgrade": "BEG",
+    "valencia": "VLC",
+    "malaga": "AGP",
+    "seville": "SVQ",
+    "palma": "PMI",
+    "tenerife": "TFS",
+    "lanzarote": "ACE",
+    "fuerteventura": "FUE",
     # Turkey
     "istanbul": "IST",
     "antalya": "AYT",
@@ -68,25 +84,110 @@ CITY_TO_IATA: dict[str, str] = {
     "dubai": "DXB",
     "abu dhabi": "AUH",
     "doha": "DOH",
+    "riyadh": "RUH",
+    "jeddah": "JED",
+    "kuwait": "KWI",
+    "muscat": "MCT",
+    "bahrain": "BAH",
+    "amman": "AMM",
+    "beirut": "BEY",
     "cairo": "CAI",
     "casablanca": "CMN",
     "marrakech": "RAK",
     "tel aviv": "TLV",
-    # Asia
+    "nairobi": "NBO",
+    "lagos": "LOS",
+    "accra": "ACC",
+    "addis ababa": "ADD",
+    "johannesburg": "JNB",
+    "cape town": "CPT",
+    # India
+    "delhi": "DEL", "new delhi": "DEL",
+    "mumbai": "BOM", "bombay": "BOM",
+    "bangalore": "BLR", "bengaluru": "BLR",
+    "hyderabad": "HYD",
+    "chennai": "MAA", "madras": "MAA",
+    "kolkata": "CCU", "calcutta": "CCU",
+    "pune": "PNQ",
+    "ahmedabad": "AMD",
+    "goa": "GOI",
+    "kochi": "COK", "cochin": "COK",
+    "jaipur": "JAI",
+    "lucknow": "LKO",
+    "chandigarh": "IXC",
+    "patna": "PAT",
+    "bhubaneswar": "BBI",
+    "nagpur": "NAG",
+    "indore": "IDR",
+    "coimbatore": "CJB",
+    "tiruchirappalli": "TRZ", "trichy": "TRZ",
+    "visakhapatnam": "VTZ",
+    "srinagar": "SXR",
+    "amritsar": "ATQ",
+    "varanasi": "VNS",
+    # Southeast Asia
     "bangkok": "BKK",
     "bali": "DPS",
+    "denpasar": "DPS",
     "singapore": "SIN",
+    "kuala lumpur": "KUL",
+    "jakarta": "CGK",
+    "manila": "MNL",
+    "ho chi minh": "SGN", "saigon": "SGN",
+    "hanoi": "HAN",
+    "phnom penh": "PNH",
+    "yangon": "RGN",
+    "colombo": "CMB",
+    "kathmandu": "KTM",
+    "dhaka": "DAC",
+    "phuket": "HKT",
+    # East Asia
     "tokyo": "NRT",
+    "osaka": "KIX",
     "seoul": "ICN",
+    "beijing": "PEK",
+    "shanghai": "PVG",
+    "hong kong": "HKG",
+    "taipei": "TPE",
+    "guangzhou": "CAN",
+    "shenzhen": "SZX",
+    "chengdu": "CTU",
+    "xian": "XIY",
+    "chongqing": "CKG",
+    "macau": "MFM",
     # Americas
     "new york": "JFK",
     "los angeles": "LAX",
     "miami": "MIA",
+    "chicago": "ORD",
+    "san francisco": "SFO",
+    "dallas": "DFW",
+    "houston": "IAH",
+    "atlanta": "ATL",
+    "boston": "BOS",
+    "washington": "IAD",
     "toronto": "YYZ",
     "montreal": "YUL",
+    "vancouver": "YVR",
+    "mexico city": "MEX",
+    "cancun": "CUN",
+    "sao paulo": "GRU",
+    "rio de janeiro": "GIG",
+    "bogota": "BOG",
+    "lima": "LIM",
+    "santiago": "SCL",
+    "buenos aires": "EZE",
     # Russia/CIS
     "moscow": "SVO",
     "saint petersburg": "LED", "st petersburg": "LED",
+    "yekaterinburg": "SVX",
+    "novosibirsk": "OVB",
+    # Oceania
+    "sydney": "SYD",
+    "melbourne": "MEL",
+    "brisbane": "BNE",
+    "perth": "PER",
+    "auckland": "AKL",
 }
 
 # ── Airline name patterns ──────────────────────────────────────────────────────
@@ -104,6 +205,16 @@ AIRLINE_PATTERNS: list[tuple[str, str]] = [
     (r"jet2",                     "Jet2"),
     (r"norwegian",                "Norwegian"),
     (r"flybe",                    "Flybe"),
+    (r"wizzair",                  "Wizz Air"),
+    (r"smartwings",               "Smartwings"),
+    (r"blue\s*air",               "Blue Air"),
+    (r"corendon",                 "Corendon"),
+    (r"tui\s*(airways|fly)?",     "TUI"),
+    (r"sunexpress",               "SunExpress"),
+    (r"condor",                   "Condor"),
+    (r"eurowings",                "Eurowings"),
+    (r"lauda(\s*motion)?",        "Lauda"),
+    (r"pobeda",                   "Pobeda"),
     # European full-service
     (r"air\s*france",             "Air France"),
     (r"lufthansa",                "Lufthansa"),
@@ -117,7 +228,7 @@ AIRLINE_PATTERNS: list[tuple[str, str]] = [
     (r"alitalia",                 "Alitalia"),
     (r"ita\s*airways",            "ITA Airways"),
     (r"finnair",                  "Finnair"),
-    (r"sas(\s*scandinavian)?",    "SAS"),
+    (r"\bsas(\s*scandinavian)?\b",    "SAS"),
     (r"lot(\s*polish)?",          "LOT"),
     (r"tarom",                    "TAROM"),
     (r"air\s*serbia",             "Air Serbia"),
@@ -126,6 +237,7 @@ AIRLINE_PATTERNS: list[tuple[str, str]] = [
     (r"olympic(\s*air)?",         "Olympic Air"),
     (r"hisky",                    "HiSky"),
     (r"animawings?",              "Animawings"),
+    (r"wizz\s*air\s*abu\s*dhabi", "Wizz Air Abu Dhabi"),
     # Middle East / Turkish
     (r"turkish\s*airlines?",      "Turkish Airlines"),
     (r"pegasus",                  "Pegasus Airlines"),
@@ -135,6 +247,24 @@ AIRLINE_PATTERNS: list[tuple[str, str]] = [
     (r"flydubai",                 "flydubai"),
     (r"air\s*arabia",             "Air Arabia"),
     (r"el\s*al",                  "El Al"),
+    (r"middle\s*east\s*airlines", "Middle East Airlines"),
+    (r"oman\s*air",               "Oman Air"),
+    (r"gulf\s*air",               "Gulf Air"),
+    (r"saudia",                   "Saudia"),
+    (r"flynas",                   "flynas"),
+    (r"flyadeal",                 "flyadeal"),
+    # Indian subcontinent
+    (r"indigo",                   "IndiGo"),
+    (r"\b6[Ee]\b",                "IndiGo"),
+    (r"air\s*india\s*express",    "Air India Express"),
+    (r"air\s*india",              "Air India"),
+    (r"vistara",                  "Vistara"),
+    (r"go\s*first",               "Go First"),
+    (r"spicejet",                 "SpiceJet"),
+    (r"akasa",                    "Akasa Air"),
+    (r"star\s*air",               "Star Air"),
+    (r"alliance\s*air",           "Alliance Air"),
+    (r"blue\s*dart\s*aviation",   "Blue Dart Aviation"),
     # US carriers
     (r"delta(\s*air\s*lines?)?",  "Delta Air Lines"),
     (r"american(\s*airlines?)?",  "American Airlines"),
@@ -144,32 +274,101 @@ AIRLINE_PATTERNS: list[tuple[str, str]] = [
     (r"alaska(\s*airlines?)?",    "Alaska Airlines"),
     (r"spirit(\s*airlines?)?",    "Spirit Airlines"),
     (r"frontier(\s*airlines?)?",  "Frontier Airlines"),
+    (r"sun\s*country",            "Sun Country Airlines"),
+    (r"avelo",                    "Avelo Airlines"),
+    (r"breeze(\s*airways)?",      "Breeze Airways"),
+    # Latin America
+    (r"latam",                    "LATAM Airlines"),
+    (r"avianca",                  "Avianca"),
+    (r"copa(\s*airlines?)?",      "Copa Airlines"),
+    (r"aeromexico",               "Aeromexico"),
+    (r"gol(\s*airlines?)?",       "GOL Airlines"),
+    (r"azul",                     "Azul Brazilian Airlines"),
+    (r"sky\s*airline",            "Sky Airline"),
+    (r"jetsmart",                 "JetSmart"),
     # Asian / Pacific
     (r"singapore\s*airlines?",    "Singapore Airlines"),
     (r"cathay\s*pacific",         "Cathay Pacific"),
     (r"japan\s*airlines?",        "Japan Airlines"),
     (r"ana\s+all\s+nippon",       "ANA"),
     (r"\bana\b",                  "ANA"),
-    # OCR noise variants of Ryanair (common misreads)
-    (r"r[yi]anair",               "Ryanair"),
-    (r"taranair",                 "Ryanair"),  # "RYANAIR" misread by OCR
     (r"korean\s*air",             "Korean Air"),
+    (r"asiana",                   "Asiana Airlines"),
     (r"thai\s*airways?",          "Thai Airways"),
+    (r"thai\s*lion",              "Thai Lion Air"),
+    (r"thai\s*smile",             "Thai Smile"),
+    (r"bangkok\s*airways?",       "Bangkok Airways"),
     (r"air\s*asia",               "AirAsia"),
+    (r"airasia\s*x",              "AirAsia X"),
+    (r"malindo",                  "Malindo Air"),
+    (r"batik\s*air",              "Batik Air"),
+    (r"lion\s*air",               "Lion Air"),
+    (r"garuda",                   "Garuda Indonesia"),
+    (r"citilink",                 "Citilink"),
+    (r"wings\s*air",              "Wings Air"),
+    (r"vietnam\s*airlines?",      "Vietnam Airlines"),
+    (r"bamboo\s*airways?",        "Bamboo Airways"),
+    (r"vietjet",                  "VietJet Air"),
+    (r"cebu\s*pacific",           "Cebu Pacific"),
+    (r"philippine\s*airlines?",   "Philippine Airlines"),
+    (r"pal\s*express",            "PAL Express"),
+    (r"china\s*southern",         "China Southern"),
+    (r"china\s*eastern",          "China Eastern"),
+    (r"air\s*china",              "Air China"),
+    (r"hainan\s*airlines?",       "Hainan Airlines"),
+    (r"xiamen\s*air",             "Xiamen Air"),
+    (r"shenzhen\s*airlines?",     "Shenzhen Airlines"),
+    (r"shandong\s*airlines?",     "Shandong Airlines"),
+    (r"eva\s*air",                "EVA Air"),
+    (r"china\s*airlines?",        "China Airlines"),
+    (r"starlux",                  "Starlux Airlines"),
+    (r"hong\s*kong\s*airlines?",  "Hong Kong Airlines"),
+    (r"hong\s*kong\s*express",    "HK Express"),
+    (r"cathay\s*dragon",          "Cathay Dragon"),
     (r"qantas",                   "Qantas"),
+    (r"jetstar",                  "Jetstar"),
+    (r"virgin\s*australia",       "Virgin Australia"),
+    (r"rex(\s*airlines?)?",       "Regional Express"),
     (r"air\s*new\s*zealand",      "Air New Zealand"),
     # African / Other
     (r"ethiopian(\s*airlines?)?", "Ethiopian Airlines"),
     (r"kenya\s*airways?",         "Kenya Airways"),
     (r"royal\s*air\s*maroc",      "Royal Air Maroc"),
     (r"tunisair",                 "Tunisair"),
-    # Carrier codes (IATA 2-letter codes as fallback, only if clearly in context)
+    (r"egyptair",                 "EgyptAir"),
+    (r"south\s*african\s*airways","South African Airways"),
+    (r"fastjet",                  "Fastjet"),
+    (r"rwandair",                 "RwandAir"),
+    # Russia / CIS
+    (r"aeroflot",                 "Aeroflot"),
+    (r"s7(\s*airlines?)?",        "S7 Airlines"),
+    (r"ural\s*airlines?",         "Ural Airlines"),
+    (r"azur\s*air",               "Azur Air"),
+    # OCR noise variants of Ryanair (common misreads)
+    (r"r[yi]anair",               "Ryanair"),
+    (r"taranair",                 "Ryanair"),
+    # IATA 2-letter codes as last resort (only when clearly a carrier context)
     (r"\bDL\b",                   "Delta Air Lines"),
     (r"\bAA\b",                   "American Airlines"),
     (r"\bUA\b",                   "United Airlines"),
     (r"\bBA\b",                   "British Airways"),
     (r"\bAF\b",                   "Air France"),
     (r"\bLH\b",                   "Lufthansa"),
+    (r"\bEK\b",                   "Emirates"),
+    (r"\bQR\b",                   "Qatar Airways"),
+    (r"\bEY\b",                   "Etihad Airways"),
+    (r"\bTK\b",                   "Turkish Airlines"),
+    (r"\bSQ\b",                   "Singapore Airlines"),
+    (r"\bCX\b",                   "Cathay Pacific"),
+    (r"\bJL\b",                   "Japan Airlines"),
+    (r"\bNH\b",                   "ANA"),
+    (r"\bKE\b",                   "Korean Air"),
+    (r"\bAI\b",                   "Air India"),
+    (r"\bW6\b",                   "Wizz Air"),
+    (r"\bFR\b",                   "Ryanair"),
+    (r"\bU2\b",                   "easyJet"),
+    (r"\bVY\b",                   "Vueling"),
+    (r"\bTP\b",                   "TAP Air Portugal"),
 ]
 
 # ── Hotel name heuristics ─────────────────────────────────────────────────────
@@ -216,8 +415,19 @@ class BookingParser:
         booking_type  = self._detect_booking_type(lower)
         airline       = self._extract_airline(lower)
         hotel_name    = self._extract_hotel_name(raw_text) if booking_type == "hotel" else None
-        origin, dest, origin_code, dest_code, route_text = self._extract_route(text, notes)
-        depart_date, return_date = extract_date_range(text)
+
+        # Try structured flight-segment line first (e.g. "6E 5021 BLR = DEL 30-04-2026")
+        seg = self._extract_flight_segment(text, notes)
+        if seg:
+            origin, dest, origin_code, dest_code, route_text, seg_date = seg
+            seg_depart, seg_return = extract_date_range(text)
+            depart_date = seg_date or seg_depart
+            # Only use seg_return as return_date if it's genuinely different from depart
+            return_date = seg_return if seg_return and seg_return != depart_date else None
+        else:
+            origin, dest, origin_code, dest_code, route_text = self._extract_route(text, notes)
+            depart_date, return_date = extract_date_range(text)
+
         price, currency = parse_price(text)
         passengers = self._extract_passengers(lower)
 
@@ -258,6 +468,51 @@ class BookingParser:
         if flight_hits > 0:
             return "flight"
         return "unknown"
+
+    # ── Flight segment extraction ──────────────────────────────────────────
+
+    # Matches patterns like:
+    #   "6E 5021 BLR = DEL 30-04-2026"
+    #   "6E-5021 BLR - DEL"
+    #   "FR 1234 OTP → BCN 12-Apr-2026"
+    #   "W6 1234 OTP BCN"
+    _SEGMENT_RE = re.compile(
+        r"\b([A-Z0-9]{2})\s*[-]?\s*(\d{1,5})"          # carrier code + flight number
+        r"\s+([A-Z]{3})"                                  # origin IATA
+        r"\s*(?:[=\-–→>/]+\s*)?"                          # optional separator
+        r"([A-Z]{3})"                                     # destination IATA
+        r"(?:\s+(\d{1,2}[-./]\d{2}[-./]\d{4}))?"         # optional date dd-mm-yyyy / dd/mm/yyyy
+    )
+
+    def _extract_flight_segment(
+        self, text: str, notes: list[str]
+    ) -> Optional[tuple[
+        Optional[str], Optional[str], str, str, str, Optional[str]
+    ]]:
+        """
+        Attempt to parse a structured flight-segment line.
+        Returns (origin_city, dest_city, origin_code, dest_code, route_text, date_str)
+        where date_str is YYYY-MM-DD if a date was captured, else None.
+        Returns None if no segment pattern is found.
+        """
+        m = self._SEGMENT_RE.search(text)
+        if not m:
+            return None
+
+        orig_code = m.group(3)
+        dest_code = m.group(4)
+        route_text = m.group(0)
+        notes.append(f"Route extracted from flight-segment line: {route_text}")
+
+        orig_city = self._iata_to_city(orig_code)
+        dest_city = self._iata_to_city(dest_code)
+
+        date_str: Optional[str] = None
+        if m.group(5):
+            from utils import normalize_date
+            date_str = normalize_date(m.group(5))
+
+        return orig_city, dest_city, orig_code, dest_code, route_text, date_str
 
     # ── Route extraction ───────────────────────────────────────────────────
 
@@ -350,9 +605,16 @@ class BookingParser:
             # Boarding pass / ticket labels
             "SEG", "PRE", "SEC", "SEQ", "DATE", "GATE", "BACK",
             "NON", "YES", "NUM",
-            # Currency / misc
+            # Currency / financial codes
             "EUR", "USD", "GBP", "PDF", "URL", "GMT", "UTC",
             "VAT", "TAX", "REF", "SMS", "TSA", "NYC",
+            "INR", "AED", "SAR", "SEK", "NOK", "DKK", "PLN",
+            "CZK", "CHF", "CAD", "AUD", "SGD", "THB", "MYR",
+            "IDR", "RON", "HKD", "JPY", "CNY", "KRW",
+            # Invoice / document type noise
+            "REG", "PNR", "GST", "CGS", "SGS", "TDS", "PAN",
+            "CIN", "SAC", "HSN", "B2B", "B2C", "LTD", "PVT",
+            "INC", "LLC", "LLP", "CEO", "CFO", "COO",
             # Specific airports handled via CITY(IATA) pattern above
             "FCO", "SFO", "DFW", "IAD", "ATL", "ORD", "LAX",
         }
@@ -394,8 +656,6 @@ class BookingParser:
             if re.search(pattern, lower):
                 return name
         return None
-
-    # ── Hotel name extraction ──────────────────────────────────────────────
 
     def _extract_hotel_name(self, text: str) -> Optional[str]:
         """

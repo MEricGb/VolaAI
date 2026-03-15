@@ -899,7 +899,7 @@ export class WhatsAppService {
           );
         }
 
-        return `Created and joined ${group.name}! Share this with friends: JOIN ${group.joinCode}. Reply LEAVE ${group.joinCode} to stop. To talk to the AI in the group, start messages with ${this.aiTrigger ?? '@vola'}.`;
+        return `Created and joined ${group.name}! Share this with friends: JOIN ${group.joinCode}. Reply LEAVE ${group.joinCode} to stop.\n\nQuick guide:\n• Send ${this.aiTrigger ?? '@vola'} <your question> to talk to the AI\n• TEAMS — see your groups\n• USE <code> — switch active group\n• LEAVE <code> — leave a group`;
       }
 
       if (!existingGroup.conversationSid) {
@@ -931,10 +931,10 @@ export class WhatsAppService {
           'system',
           `${profileName || phone.replace('whatsapp:', '')} joined the group`,
         );
-        return `Joined ${existingGroup.name}! Your messages will now be shared with the group. Reply LEAVE ${existingGroup.joinCode} to stop. To talk to the AI in the group, start messages with ${this.aiTrigger ?? '@vola'}.`;
+        return `Joined ${existingGroup.name}! Your messages will now be shared with the group.\n\nQuick guide:\n• Send ${this.aiTrigger ?? '@vola'} <your question> to talk to the AI\n• TEAMS — see your groups\n• USE <code> — switch active group\n• LEAVE <code> — leave a group`;
       }
 
-      return `Joined ${existingGroup.name}. You're in multiple teams — reply USE ${existingGroup.joinCode} to make this the active one.`;
+      return `Joined ${existingGroup.name}. You're in multiple teams — reply USE ${existingGroup.joinCode} to make this the active one.\n\nQuick guide:\n• Send ${this.aiTrigger ?? '@vola'} <your question> to talk to the AI\n• TEAMS — see your groups\n• USE <code> — switch active group\n• LEAVE <code> — leave a group`;
     }
 
     if (membership.status === WhatsAppGroupMemberStatus.ACTIVE) {
@@ -951,7 +951,7 @@ export class WhatsAppService {
         where: { id: membership.id },
         data: { status: WhatsAppGroupMemberStatus.PAUSED },
       });
-      return `Joined ${membership.group.name}. You're in multiple teams — reply USE ${membership.group.joinCode} to make this the active one.`;
+      return `Joined ${membership.group.name}. You're in multiple teams — reply USE ${membership.group.joinCode} to make this the active one.\n\nQuick guide:\n• Send ${this.aiTrigger ?? '@vola'} <your question> to talk to the AI\n• TEAMS — see your groups\n• USE <code> — switch active group\n• LEAVE <code> — leave a group`;
     }
 
     // Add as Twilio Conversation participant
@@ -979,7 +979,7 @@ export class WhatsAppService {
       },
     });
 
-    return `Joined ${membership.group.name}! Your messages will now be shared with the group. Reply LEAVE ${joinCode} to stop. To talk to the AI in the group, start messages with ${this.aiTrigger ?? '@vola'}.`;
+    return `Joined ${membership.group.name}! Your messages will now be shared with the group.\n\nQuick guide:\n• Send ${this.aiTrigger ?? '@vola'} <your question> to talk to the AI\n• TEAMS — see your groups\n• USE <code> — switch active group\n• LEAVE <code> — leave a group`;
   }
 
   private async listTeams(phone: string): Promise<string> {
