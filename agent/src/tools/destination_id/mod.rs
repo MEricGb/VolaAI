@@ -107,6 +107,7 @@ impl Tool for DestinationIdTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        tracing::info!(image_source = %args.image_source, "identify_destination tool invoked");
         let image_content = build_image_content(&self.http, &args.image_source).await?;
 
         let payload = serde_json::json!({
@@ -144,7 +145,15 @@ impl Tool for DestinationIdTool {
             .unwrap_or("")
             .to_string();
 
-        parse_response(&raw)
+        let parsed = parse_response(&raw)?;
+        tracing::info!(
+            city = ?parsed.city,
+            country = ?parsed.country,
+            landmark = ?parsed.landmark,
+            confidence = %parsed.confidence,
+            "identify_destination parsed"
+        );
+        Ok(parsed)
     }
 }
 
