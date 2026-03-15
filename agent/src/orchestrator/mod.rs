@@ -1,8 +1,14 @@
-//! Orchestration engine — builds and runs the rig multi-tool agent.
+//! Three-stage orchestration pipeline.
 //!
-//! [`OrchestrationEngine`] is constructed once at startup and shared via `Arc`.
-//! Each call to [`OrchestrationEngine::process`] runs the agent directly —
-//! the preamble instructs the LLM to respond in the user's language.
+//! Each user message flows through three isolated LLM calls:
+//!
+//! 1. **Tool selector** (fast model) — reads tool descriptions, decides which
+//!    tool is relevant and extracts parameters from the user message.
+//! 2. **Tool executor** (fast model, agent with tools) — receives the selection
+//!    from stage 1 and invocation rules, then actually calls the tool.
+//! 3. **Response generator** (main model) — receives only the user message and
+//!    the tool results. It never sees tool names, descriptions, or invocation
+//!    rules, so it cannot leak them.
 
 pub mod preamble;
 
@@ -75,37 +81,113 @@ impl OrchestrationEngine {
         })
     }
 
-    /// Process a user message — runs the agent and returns its reply.
+    /// Stage 1 — Tool selector (fast model, no tools).
     ///
-    /// The LLM is instructed via the preamble to always respond in the same
-    /// language the user wrote in, so no translation step is needed.
+    /// Reads the tool descriptions and the user message, then outputs which
+    /// tool to call and what parameters to use. Returns a structured
+    /// selection string that stage 2 can act on.
+    async fn select_tool(&self, user_message: &str) -> Result<String, AppError> {
+        let selector = self.llm_client
+            .agent(&self.config.fast_model)
+            .preamble(preamble::build_tool_descriptions())
+            .build();
+
+        let selection = selector
+            .prompt(user_message)
+            .await
+            .map_err(|e| {
+                warn!(error = %e, "Stage 1 (tool selection) failed");
+                AppError::Llm(e.to_string())
+            })?;
+
+        info!(selection = %selection, "Stage 1 complete — tool selected");
+        Ok(selection)
+    }
+
+    /// Stage 2 — Tool executor (fast model, agent with tools).
+    ///
+    /// Receives the tool selection from stage 1 plus the invocation rules,
+    /// then calls the appropriate tool and returns the raw result.
+    async fn invoke_tool(
+        &self,
+        user_message: &str,
+        tool_selection: &str,
+    ) -> Result<String, AppError> {
+        let executor = self.llm_client
+            .agent(&self.config.fast_model)
+            .preamble(preamble::build_tool_invocation())
+            .tool(self.scraper_tool.clone())
+            .tool(self.ocr_tool.clone())
+            .tool(self.dest_tool.clone())
+            .build();
+
+        let prompt = format!(
+            "Tool selection from previous analysis:\n{tool_selection}\n\n\
+             User message:\n{user_message}"
+        );
+
+        let tool_result = executor
+            .prompt(&prompt)
+            .await
+            .map_err(|e| {
+                warn!(error = %e, "Stage 2 (tool invocation) failed");
+                AppError::Llm(e.to_string())
+            })?;
+
+        info!(result_len = tool_result.len(), "Stage 2 complete — tool invoked");
+        Ok(tool_result)
+    }
+
+    /// Stage 3 — Response generator (main model, no tools).
+    ///
+    /// Receives only the user message and the tool results. It never sees
+    /// tool names, descriptions, or invocation rules, preventing any leakage
+    /// of internal details into the user-facing response.
+    async fn generate_response(
+        &self,
+        user_message: &str,
+        tool_result: &str,
+    ) -> Result<String, AppError> {
+        let responder = self.llm_client
+            .agent(&self.config.featherless_model)
+            .preamble(&preamble::build_response_prompt())
+            .build();
+
+        let prompt = format!(
+            "User message:\n{user_message}\n\n\
+             Information:\n{tool_result}"
+        );
+
+        let reply = responder
+            .prompt(&prompt)
+            .await
+            .map_err(|e| {
+                warn!(error = %e, "Stage 3 (response generation) failed");
+                AppError::Llm(e.to_string())
+            })?;
+
+        Ok(reply)
+    }
+
+    /// Process a user message through the three-stage pipeline.
     #[instrument(skip(self), fields(session_id = %session_id))]
     pub async fn process(
         &self,
         session_id: &str,
         user_message: &str,
     ) -> Result<ProcessResult, AppError> {
-        info!(user_message, "Processing request");
-        info!(model = %self.config.featherless_model, "Calling agent LLM");
+        info!(user_message, "Processing request — 3-stage pipeline");
 
-        let agent = self.llm_client
-            .agent(&self.config.featherless_model)
-            .preamble(&preamble::build())
-            .tool(self.scraper_tool.clone())
-            .tool(self.ocr_tool.clone())
-            .tool(self.dest_tool.clone())
-            .build();
+        // Stage 1: select tool (fast model)
+        let tool_selection = self.select_tool(user_message).await?;
 
-        let reply = agent
-            .prompt(user_message)
-            .await
-            .map_err(|e| {
-                warn!(error = %e, "Agent LLM call failed");
-                AppError::Llm(e.to_string())
-            })?;
+        // Stage 2: invoke tool (fast model + tools)
+        let tool_result = self.invoke_tool(user_message, &tool_selection).await?;
 
-        info!(reply_len = reply.len(), "Agent responded");
+        // Stage 3: generate response (main model, no tool internals)
+        let reply = self.generate_response(user_message, &tool_result).await?;
 
+        info!(reply_len = reply.len(), "Pipeline complete");
         Ok(ProcessResult { reply })
     }
 }
