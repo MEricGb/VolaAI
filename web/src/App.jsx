@@ -17,6 +17,8 @@ import { getPublicConfig } from './lib/api';
 
 const LandingPage = () => {
   const [whatsAppNumber, setWhatsAppNumber] = useState(null);
+  const [aiTrigger, setAiTrigger] = useState('@vola');
+  const [sandboxJoinPhrase, setSandboxJoinPhrase] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,11 +27,15 @@ const LandingPage = () => {
       .then((config) => {
         if (!cancelled) {
           setWhatsAppNumber(config.whatsappNumber);
+          setAiTrigger(config.aiTrigger || '@vola');
+          setSandboxJoinPhrase(config.sandboxJoinPhrase || null);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setWhatsAppNumber(null);
+          setAiTrigger('@vola');
+          setSandboxJoinPhrase(null);
         }
       });
 
@@ -40,12 +46,12 @@ const LandingPage = () => {
 
   return (
     <div className="app-wrapper">
-      <Navbar whatsAppNumber={whatsAppNumber} />
+      <Navbar whatsAppNumber={whatsAppNumber} aiTrigger={aiTrigger} />
       <main>
-        <Hero whatsAppNumber={whatsAppNumber} />
+        <Hero whatsAppNumber={whatsAppNumber} aiTrigger={aiTrigger} />
         <TrustBar />
         <Features />
-        <FAQ />
+        <FAQ aiTrigger={aiTrigger} sandboxJoinPhrase={sandboxJoinPhrase} />
       </main>
       <Footer />
     </div>

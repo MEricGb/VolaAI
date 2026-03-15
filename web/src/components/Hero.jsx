@@ -5,7 +5,10 @@ import '../App.css';
 const waLink = (number, text) =>
   `https://wa.me/${number.replace(/^\+/, '')}?text=${encodeURIComponent(text)}`;
 
-const Hero = ({ whatsAppNumber }) => {
+const withTrigger = (trigger, text) =>
+  (trigger ? `${trigger} ${text}` : text).trim();
+
+const Hero = ({ whatsAppNumber, aiTrigger }) => {
   const [messages, setMessages] = useState([
     { text: "Hi! Where would you like to travel today?", user: false },
   ]);
@@ -125,7 +128,14 @@ const Hero = ({ whatsAppNumber }) => {
 
         <div className="cta-box">
           <a
-            href={whatsAppNumber ? waLink(whatsAppNumber, "Hi! I'd like to plan a trip.") : '#'}
+            href={
+              whatsAppNumber
+                ? waLink(
+                    whatsAppNumber,
+                    withTrigger(aiTrigger, "Hi! I'd like to plan a trip."),
+                  )
+                : '#'
+            }
             target="_blank"
             rel="noreferrer"
             className="btn-whatsapp"
@@ -140,17 +150,25 @@ const Hero = ({ whatsAppNumber }) => {
             Start planning on WhatsApp
           </a>
 
+          <a href="#faq" className="btn-instructions">
+            INSTRUCTIONS FIRST!
+          </a>
+
           <div className="suggested-prompts">
             <p>Try saying:</p>
             <div className="prompts-grid">
               {[
                 'Fly me to Rome next Friday',
-                'Hotel in Dubai under €150',
+                'Cheap flights to Dubai under €150',
                 'Weekend in Paris, 2 people',
-              ].map((prompt) => (
+              ].map((prompt, idx) => (
                 <a
                   key={prompt}
-                  href={whatsAppNumber ? waLink(whatsAppNumber, prompt) : '#'}
+                  href={
+                    whatsAppNumber
+                      ? waLink(whatsAppNumber, withTrigger(aiTrigger, prompt))
+                      : '#'
+                  }
                   target="_blank"
                   rel="noreferrer"
                   className="prompt-pill"
@@ -161,7 +179,10 @@ const Hero = ({ whatsAppNumber }) => {
                     }
                   }}
                 >
-                  "{prompt}"
+                  <span className="prompt-index" aria-hidden="true">
+                    {idx + 1}
+                  </span>
+                  <span className="prompt-text">"{prompt}"</span>
                 </a>
               ))}
             </div>

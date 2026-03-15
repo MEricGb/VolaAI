@@ -53,16 +53,26 @@ impl AgentService for AgentServiceImpl {
             req.session_id.clone()
         };
 
-        // Read session history without holding lock across network/LLM call.
-        let state = {
-            let sessions = self.sessions.lock().await;
-            sessions
-                .get(&session_id)
-                .cloned()
-                .unwrap_or_default()
+        // If the API provides structured context (DB-backed last-N messages),
+        // use that directly to avoid double-wrapping and prompt leakage.
+        let (contextual_message, user_for_state) = if let Some((history, current)) =
+            parse_api_ctx_message(&req.user_message)
+        {
+            (
+                build_contextual_message_from_parts(&history, &current),
+                current,
+            )
+        } else {
+            // Read session history without holding lock across network/LLM call.
+            let state = {
+                let sessions = self.sessions.lock().await;
+                sessions.get(&session_id).cloned().unwrap_or_default()
+            };
+            (
+                build_contextual_message(&state.turns, &req.user_message),
+                req.user_message.clone(),
+            )
         };
-
-        let contextual_message = build_contextual_message(&state.turns, &req.user_message);
 
         let result = self
             .engine
@@ -77,7 +87,7 @@ impl AgentService for AgentServiceImpl {
             let mut sessions = self.sessions.lock().await;
             let session = sessions.entry(session_id).or_default();
             session.turns.push_back(ChatTurn {
-                user: clip_text(&req.user_message),
+                user: clip_text(&user_for_state),
                 assistant: clip_text(&result.reply),
             });
             while session.turns.len() > MAX_TURNS_PER_SESSION {
@@ -95,7 +105,7 @@ fn build_contextual_message(history: &VecDeque<ChatTurn>, user_message: &str) ->
     }
 
     let mut out = String::from(
-        "Use this recent conversation context to resolve omitted details like routes, dates, and option numbers.\n",
+        "Use this recent conversation context to resolve omitted details like routes, dates, and option numbers. Do not repeat it verbatim.\n",
     );
     out.push_str("Recent turns:\n");
     for turn in history {
@@ -106,9 +116,52 @@ fn build_contextual_message(history: &VecDeque<ChatTurn>, user_message: &str) ->
         out.push_str(&turn.assistant);
         out.push('\n');
     }
-    out.push_str("Current user message: ");
+    out.push_str("User: ");
     out.push_str(user_message);
     out
+}
+
+fn build_contextual_message_from_parts(history: &str, user_message: &str) -> String {
+    let mut out = String::from(
+        "Use this recent conversation context to resolve omitted details like routes, dates, and option numbers. Do not repeat it verbatim.\n",
+    );
+    let history = history.trim();
+    if !history.is_empty() {
+        out.push_str("Recent turns:\n");
+        out.push_str(history);
+        if !history.ends_with('\n') {
+            out.push('\n');
+        }
+    }
+    out.push_str("User: ");
+    out.push_str(user_message.trim());
+    out
+}
+
+fn parse_api_ctx_message(user_message: &str) -> Option<(String, String)> {
+    // Payload format:
+    // __API_CTX__
+    // <<HISTORY>>
+    // ...
+    // <<USER>>
+    // <current user message>
+    let trimmed = user_message.trim();
+    let after_prefix = trimmed.strip_prefix("__API_CTX__")?;
+    let after_prefix = after_prefix.trim_start_matches('\n');
+    let (history_part, current_part) = after_prefix.split_once("\n<<USER>>\n")?;
+
+    let history = history_part
+        .trim_start()
+        .strip_prefix("<<HISTORY>>\n")
+        .unwrap_or("")
+        .trim_end()
+        .to_string();
+
+    let current = current_part.trim().to_string();
+    if current.is_empty() {
+        return None;
+    }
+    Some((history, current))
 }
 
 fn clip_text(text: &str) -> String {

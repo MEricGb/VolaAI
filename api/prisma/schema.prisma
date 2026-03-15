@@ -10,7 +10,13 @@ datasource db {
 enum WhatsAppGroupMemberStatus {
   INVITED
   ACTIVE
+  PAUSED
   LEFT
+}
+
+enum WhatsAppDirectMessageDirection {
+  INBOUND
+  OUTBOUND
 }
 
 model User {
@@ -74,4 +80,16 @@ model WhatsAppGroupMessage {
 
   @@index([groupId, createdAt])
   @@map("whatsapp_group_messages")
+}
+
+model WhatsAppDirectMessage {
+  id              String                        @id @default(uuid())
+  userPhone       String
+  direction       WhatsAppDirectMessageDirection
+  body            String
+  twilioMessageSid String?                      @unique
+  createdAt       DateTime                      @default(now())
+
+  @@index([userPhone, createdAt])
+  @@map("whatsapp_direct_messages")
 }
