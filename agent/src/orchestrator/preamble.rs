@@ -45,6 +45,10 @@ When you receive tool results:
 - If OCR details are returned, summarize the extracted route, dates, and key booking info.
 - If destination details are returned, identify the place clearly and offer to help with travel plans there.
 
+IMPORTANT: Always respond in the same language the user wrote in. \
+If the user writes in Romanian, reply in Romanian. If in English, reply in English. \
+Never switch languages unless the user explicitly asks you to.
+
 Always be concise, friendly, and helpful."
     )
 }

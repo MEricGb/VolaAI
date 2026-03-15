@@ -64,12 +64,12 @@ pub struct DestinationIdTool {
 }
 
 impl DestinationIdTool {
-    pub fn new(api_key: String, base_url: String, vision_model: String) -> Self {
+    pub fn new(api_key: String, base_url: String, vision_model: String, http: reqwest::Client) -> Self {
         Self {
             api_key,
             base_url,
             vision_model,
-            http: reqwest::Client::new(),
+            http,
         }
     }
 }

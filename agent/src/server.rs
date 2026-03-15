@@ -34,7 +34,6 @@ pub(crate) struct ChatTurn {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SessionState {
     turns: VecDeque<ChatTurn>,
-    language: Option<String>,
 }
 
 const MAX_TURNS_PER_SESSION: usize = 8;
@@ -70,8 +69,6 @@ impl AgentService for AgentServiceImpl {
             .process(
                 &session_id,
                 &contextual_message,
-                &req.user_message,
-                state.language.as_deref(),
             )
             .await
             .map_err(Status::from)?;
@@ -79,7 +76,6 @@ impl AgentService for AgentServiceImpl {
         {
             let mut sessions = self.sessions.lock().await;
             let session = sessions.entry(session_id).or_default();
-            session.language = Some(result.language.clone());
             session.turns.push_back(ChatTurn {
                 user: clip_text(&req.user_message),
                 assistant: clip_text(&result.reply),

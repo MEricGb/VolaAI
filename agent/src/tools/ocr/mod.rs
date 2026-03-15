@@ -75,13 +75,14 @@ impl OcrTool {
         api_key: String,
         base_url: String,
         model: String,
+        http: reqwest::Client,
     ) -> Self {
         Self {
             client,
             api_key,
             base_url,
             model,
-            http: reqwest::Client::new(),
+            http,
         }
     }
 

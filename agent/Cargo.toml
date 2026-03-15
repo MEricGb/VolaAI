@@ -19,6 +19,7 @@ reqwest            = { version = "0.12", features = ["json"] }
 base64             = "0.22"
 image              = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 chrono = "0.4.44"
+futures = "0.3"
 
 [build-dependencies]
 tonic-build = "0.12"

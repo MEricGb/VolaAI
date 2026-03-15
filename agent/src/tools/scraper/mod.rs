@@ -93,24 +93,27 @@ async fn pick_available_offer<'a>(
         return None;
     }
 
-    let mut probe_order = Vec::with_capacity(top.len());
-    if requested_idx < top.len() {
-        probe_order.push(requested_idx);
+    // Probe all offers in parallel instead of sequentially.
+    let probes: Vec<_> = top
+        .iter()
+        .enumerate()
+        .map(|(i, offer)| {
+            let url = offer.deep_link.clone();
+            async move { (i, !looks_unavailable_booking_page(&url).await) }
+        })
+        .collect();
+
+    let results = futures::future::join_all(probes).await;
+
+    // Prefer the requested index if available, then take the first available.
+    if requested_idx < results.len() && results[requested_idx].1 {
+        return Some((requested_idx, top[requested_idx]));
     }
-    for i in 0..top.len() {
-        if i != requested_idx {
-            probe_order.push(i);
-        }
+    if let Some((idx, _)) = results.iter().find(|(_, available)| *available) {
+        return Some((*idx, top[*idx]));
     }
 
-    for idx in probe_order {
-        let offer = top[idx];
-        if !looks_unavailable_booking_page(&offer.deep_link).await {
-            return Some((idx, offer));
-        }
-    }
-
-    // If all probes look unavailable, still return requested option when possible.
+    // All look unavailable — return requested or first.
     if requested_idx < top.len() {
         Some((requested_idx, top[requested_idx]))
     } else {
