@@ -94,19 +94,38 @@ export class WhatsAppService {
     }
 
     this.logger.log(`User ${from} not in active group. Falling back to 1-to-1 AI.`);
-    // Default: Forward to AI Agent for 1-to-1 chat
+    // Fire agent call async — Twilio times out after ~15s so we return empty TwiML
+    // immediately and send the reply via the Messages API once the agent responds.
+    const sessionId = profileName || from.replace('whatsapp:', '');
+    this.triggerAgentReply(from, sessionId, body).catch((err) =>
+      this.logger.error('1-to-1 async agent reply failed', err),
+    );
+    return this.buildEmptyTwiml();
+  }
+
+  private async triggerAgentReply(to: string, sessionId: string, body: string): Promise<void> {
+    this.logger.log(`[1-to-1] Calling agent gRPC: session=${sessionId} message="${body}"`);
+    let reply: string;
     try {
-      const sessionId = profileName || from.replace('whatsapp:', '');
-      this.logger.log(`[1-to-1] Calling agent gRPC: session=${sessionId} message="${body}"`);
-      const reply = await this.agentService.chat(sessionId, body);
+      reply = await this.agentService.chat(sessionId, body);
       this.logger.log(`[1-to-1] Agent replied (${reply.length} chars)`);
-      return this.buildTwiml(reply);
     } catch (err) {
       this.logger.error('Agent gRPC call failed (1-to-1)', err);
-      return this.buildTwiml(
-        '⚠️ Our AI assistant is temporarily unavailable. Please try again shortly.',
-      );
+      reply = '⚠️ Our AI assistant is temporarily unavailable. Please try again shortly.';
     }
+
+    if (!this.client || !this.twilioWhatsAppNumber) {
+      this.logger.warn('[1-to-1] Twilio client not configured, cannot send reply');
+      return;
+    }
+
+    this.logger.log(`[1-to-1] Sending reply via Messages API to ${to}`);
+    await this.client.messages.create({
+      from: this.twilioWhatsAppNumber,
+      to,
+      body: reply,
+    });
+    this.logger.log(`[1-to-1] Reply sent`);
   }
 
   // ─── Conversations pre-event webhook (onMessageAdd) ───────────────────
@@ -740,6 +759,10 @@ export class WhatsAppService {
     const response = new twilio.twiml.MessagingResponse();
     response.message(message);
     return response.toString();
+  }
+
+  private buildEmptyTwiml(): string {
+    return new twilio.twiml.MessagingResponse().toString();
   }
 
   private async upsertUser(phone: string, name: string | null) {
