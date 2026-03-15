@@ -292,12 +292,6 @@ Already implemented in code:
 - media storage and serving through MinIO
 - landing page and admin dashboard shell
 
-Still partial or scaffolded:
-
-- Stripe webhook processing currently logs payloads
-- some admin pages are placeholders
-- Redis is available in local infra but not yet wired into active API behavior
-
 ## Deployment
 
 - each service has its own Dockerfile at the repo root
