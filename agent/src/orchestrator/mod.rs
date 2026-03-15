@@ -26,7 +26,7 @@ use crate::{
 /// The central orchestrator — owns the LLM client and shared tool instances.
 pub struct OrchestrationEngine {
     config: Arc<Config>,
-    llm_client: openai::Client,
+    llm_client: openai::CompletionsClient,
     scraper_tool: ScraperTool,
     ocr_tool: OcrTool,
     dest_tool: DestinationIdTool,
@@ -39,7 +39,7 @@ pub struct ProcessResult {
 impl OrchestrationEngine {
     /// Construct the engine and connect to all downstream services.
     pub fn new(config: Arc<Config>) -> Result<Self, AppError> {
-        let llm_client = openai::Client::builder()
+        let llm_client = openai::CompletionsClient::builder()
             .api_key(config.featherless_api_key.clone())
             .base_url(&config.featherless_base_url)
             .build()
