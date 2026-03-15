@@ -13,6 +13,8 @@ use base64::engine::general_purpose;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::openai;
+use s3::creds::Credentials;
+use s3::{Bucket, Region};
 use tracing::{info, instrument, warn};
 
 use crate::{
@@ -34,6 +36,7 @@ pub struct OrchestrationEngine {
     dest_tool: DestinationIdTool,
     ocr_client: Arc<OcrClient>,
     http: reqwest::Client,
+    s3_bucket: Box<Bucket>,
 }
 
 pub struct ProcessResult {
@@ -69,6 +72,19 @@ impl OrchestrationEngine {
             http.clone(),
         );
 
+        let region = Region::Custom {
+            region: "us-east-1".to_string(),
+            endpoint: format!("http://{}:{}", config.minio_endpoint, config.minio_port),
+        };
+        let credentials = Credentials::new(
+            Some(&config.minio_access_key),
+            Some(&config.minio_secret_key),
+            None, None, None,
+        ).map_err(|e| AppError::Config(anyhow::anyhow!("MinIO credentials error: {e}")))?;
+        let s3_bucket = Bucket::new(&config.minio_bucket, region, credentials)
+            .map_err(|e| AppError::Config(anyhow::anyhow!("MinIO bucket init error: {e}")))?
+            .with_path_style();
+
         Ok(Self {
             config,
             llm_client,
@@ -77,6 +93,7 @@ impl OrchestrationEngine {
             dest_tool,
             ocr_client,
             http: http.clone(),
+            s3_bucket,
         })
     }
 
@@ -178,14 +195,29 @@ impl OrchestrationEngine {
         context_parts.join("\n")
     }
 
-    /// Download image bytes from a public MinIO URL and send to the vision LLM.
+    /// Extract the S3 object key from a MinIO URL.
+    /// e.g. "http://minio:9000/whatsapp-media/uploads/phone/ts-0.jpg" → "uploads/phone/ts-0.jpg"
+    fn extract_object_key<'a>(&self, url: &'a str) -> Result<&'a str, AppError> {
+        let prefix = format!("/{}/", self.config.minio_bucket);
+        let pos = url.find(&prefix)
+            .ok_or_else(|| AppError::Config(anyhow::anyhow!(
+                "Cannot extract key from MinIO URL: {url}"
+            )))?;
+        Ok(&url[pos + prefix.len()..])
+    }
+
+    /// Download image bytes from MinIO (authenticated) for vision LLM processing.
+    async fn download_from_minio(&self, url: &str) -> Result<Vec<u8>, AppError> {
+        let key = self.extract_object_key(url)?;
+        tracing::debug!(key, "Downloading from MinIO");
+        let response = self.s3_bucket.get_object(key).await
+            .map_err(|e| AppError::Llm(format!("MinIO download failed for {key}: {e}")))?;
+        Ok(response.to_vec())
+    }
+
+    /// Download image bytes from MinIO and send to the vision LLM.
     async fn describe_image_with_vision(&self, url: &str) -> Result<String, AppError> {
-        let bytes = reqwest::get(url)
-            .await
-            .map_err(|e| AppError::Llm(format!("Failed to download image: {e}")))?
-            .bytes()
-            .await
-            .map_err(|e| AppError::Llm(format!("Failed to read image bytes: {e}")))?;
+        let bytes = self.download_from_minio(url).await?;
 
         let mime = image::guess_format(&bytes)
             .map(|fmt| match fmt {

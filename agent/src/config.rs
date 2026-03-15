@@ -16,6 +16,8 @@ pub struct Config {
     pub minio_endpoint:       String,
     pub minio_port:           u16,
     pub minio_bucket:         String,
+    pub minio_access_key:     String,
+    pub minio_secret_key:     String,
 }
 
 impl Config {
@@ -54,6 +56,10 @@ impl Config {
                 .context("MINIO_PORT must be a valid port number")?,
             minio_bucket: std::env::var("MINIO_BUCKET")
                 .unwrap_or_else(|_| "whatsapp-media".to_string()),
+            minio_access_key: std::env::var("MINIO_ACCESS_KEY")
+                .unwrap_or_else(|_| "admin".to_string()),
+            minio_secret_key: std::env::var("MINIO_SECRET_KEY")
+                .unwrap_or_else(|_| "password".to_string()),
         })
     }
 }

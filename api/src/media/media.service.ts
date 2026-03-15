@@ -48,20 +48,7 @@ export class MediaService implements OnModuleInit {
       await this.client.makeBucket(this.bucket);
       this.logger.log(`Created bucket: ${this.bucket}`);
     }
-
-    // Set public-read policy so agent and OCR service can download without auth
-    const policy = JSON.stringify({
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Effect: 'Allow',
-          Principal: { AWS: ['*'] },
-          Action: ['s3:GetObject'],
-          Resource: [`arn:aws:s3:::${this.bucket}/*`],
-        },
-      ],
-    });
-    await this.client.setBucketPolicy(this.bucket, policy);
+    this.logger.log(`MinIO ready, bucket=${this.bucket}`);
   }
 
   /**

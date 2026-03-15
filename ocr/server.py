@@ -18,10 +18,11 @@ import logging
 import os
 import sys
 import tempfile
-import urllib.request
 from concurrent import futures
+from urllib.parse import urlparse
 
 import grpc
+from minio import Minio
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 GENERATED_DIR = os.path.join(BASE_DIR, "generated")
@@ -39,14 +40,42 @@ GRPC_PORT = 50053
 VALID_BACKENDS = {"mock", "tesseract", "google", "openai", "featherless"}
 
 
-def _download_to_temp(image_url: str) -> str:
-    """Download an image from a URL to a temp file. Returns the temp file path."""
-    ext = image_url.rstrip('/').split('.')[-1].split('?')[0]
+def _init_minio_client() -> Minio:
+    """Create a MinIO client from environment variables."""
+    endpoint = os.environ.get("MINIO_ENDPOINT", "localhost")
+    port = os.environ.get("MINIO_PORT", "9000")
+    access_key = os.environ.get("MINIO_ACCESS_KEY", "admin")
+    secret_key = os.environ.get("MINIO_SECRET_KEY", "password")
+    return Minio(
+        f"{endpoint}:{port}",
+        access_key=access_key,
+        secret_key=secret_key,
+        secure=False,
+    )
+
+
+def _extract_bucket_and_key(image_url: str) -> tuple[str, str]:
+    """Parse a MinIO URL into (bucket, object_key).
+    e.g. 'http://minio:9000/whatsapp-media/uploads/phone/ts-0.jpg'
+      -> ('whatsapp-media', 'uploads/phone/ts-0.jpg')
+    """
+    parsed = urlparse(image_url)
+    # path is '/whatsapp-media/uploads/phone/ts-0.jpg'
+    parts = parsed.path.lstrip('/').split('/', 1)
+    if len(parts) < 2:
+        raise ValueError(f"Cannot parse bucket/key from URL: {image_url}")
+    return parts[0], parts[1]
+
+
+def _download_to_temp(minio_client: Minio, image_url: str) -> str:
+    """Download an image from MinIO to a temp file. Returns the temp file path."""
+    bucket, key = _extract_bucket_and_key(image_url)
+    ext = key.rstrip('/').split('.')[-1].split('?')[0]
     if not ext or len(ext) > 5:
         ext = 'jpg'
     with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as f:
         tmp_path = f.name
-    urllib.request.urlretrieve(image_url, tmp_path)
+    minio_client.fget_object(bucket, key, tmp_path)
     return tmp_path
 
 
@@ -74,6 +103,12 @@ def _summary_from_payload(payload) -> str:
 
 
 class OcrServicer(ocr_pb2_grpc.OcrServiceServicer):
+    def __init__(self):
+        self.minio_client = _init_minio_client()
+        log.info("MinIO client initialized: %s:%s",
+                 os.environ.get("MINIO_ENDPOINT", "localhost"),
+                 os.environ.get("MINIO_PORT", "9000"))
+
     def ExtractBookingInfo(self, request, context):
         session_id = request.session_id
         image_url = request.image_url
@@ -95,7 +130,7 @@ class OcrServicer(ocr_pb2_grpc.OcrServiceServicer):
         # Download image from MinIO URL to a local temp file
         tmp_path = None
         try:
-            tmp_path = _download_to_temp(image_url)
+            tmp_path = _download_to_temp(self.minio_client, image_url)
         except Exception as exc:
             log.exception("[%s] Failed to download image from %r", session_id, image_url)
             context.set_code(grpc.StatusCode.INTERNAL)
