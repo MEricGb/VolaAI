@@ -6,7 +6,9 @@ export class ConversationPreEventDto {
   EventType!: string;
   ConversationSid!: string;
   Author!: string;
-  Body!: string;
+  Body?: string;
   ParticipantSid?: string;
   ChatServiceSid?: string;
+  // JSON string representing an array of attached media objects (if any).
+  Media?: string;
 }

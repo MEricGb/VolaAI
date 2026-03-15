@@ -9,6 +9,8 @@ Future Vola integration:
 """
 
 import os
+import tempfile
+import urllib.request
 from typing import Optional
 
 from models import BookingInfo, TripCheckPayload
@@ -47,44 +49,68 @@ class TripCheckService:
         if not image_path:
             return TripCheckPayload(success=False, error="No image path provided.")
 
-        # Allow mock paths (they don't exist on disk)
-        from ocr_provider import MockOCRProvider
-        is_mock_provider = isinstance(self._ocr, MockOCRProvider)
-        if not is_mock_provider and not os.path.exists(image_path):
-            return TripCheckPayload(
-                success=False,
-                error=f"File not found: {image_path}"
-            )
-
-        # Step 2: OCR
+        tmp_file = None
+        local_path = image_path
         try:
-            raw_text = self._ocr.extract_text(image_path)
-        except FileNotFoundError as exc:
-            return TripCheckPayload(success=False, error=str(exc))
-        except Exception as exc:
-            return TripCheckPayload(success=False, error=f"OCR failed: {exc}")
+            # Allow http(s) URLs by downloading to a temp file first.
+            if image_path.startswith("http://") or image_path.startswith("https://"):
+                suffix = os.path.splitext(image_path)[1] or ".img"
+                fd, tmp_file = tempfile.mkstemp(prefix="ocr_", suffix=suffix)
+                os.close(fd)
+                req = urllib.request.Request(
+                    image_path,
+                    headers={"User-Agent": "vibehack-2026-ocr/1.0"},
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = resp.read()
+                with open(tmp_file, "wb") as f:
+                    f.write(data)
+                local_path = tmp_file
 
-        if not raw_text or not raw_text.strip():
+            # Allow mock paths (they don't exist on disk)
+            from ocr_provider import MockOCRProvider
+            is_mock_provider = isinstance(self._ocr, MockOCRProvider)
+            if not is_mock_provider and not os.path.exists(local_path):
+                return TripCheckPayload(
+                    success=False,
+                    error=f"File not found: {local_path}"
+                )
+
+            # Step 2: OCR
+            try:
+                raw_text = self._ocr.extract_text(local_path)
+            except FileNotFoundError as exc:
+                return TripCheckPayload(success=False, error=str(exc))
+            except Exception as exc:
+                return TripCheckPayload(success=False, error=f"OCR failed: {exc}")
+
+            if not raw_text or not raw_text.strip():
+                return TripCheckPayload(
+                    success=False,
+                    error="OCR returned empty text. The image may be blank or unreadable."
+                )
+
+            # Step 3: parse
+            booking_info = self._parser.parse(raw_text)
+
+            # Step 4: build comparison query
+            comparison_query = self._build_comparison_query(booking_info)
+            if comparison_query is None:
+                booking_info.notes.append(
+                    "comparison_query not built — need at least origin, destination, and a date."
+                )
+
             return TripCheckPayload(
-                success=False,
-                error="OCR returned empty text. The image may be blank or unreadable."
+                success        = True,
+                booking_info   = booking_info,
+                comparison_query = comparison_query,
             )
-
-        # Step 3: parse
-        booking_info = self._parser.parse(raw_text)
-
-        # Step 4: build comparison query
-        comparison_query = self._build_comparison_query(booking_info)
-        if comparison_query is None:
-            booking_info.notes.append(
-                "comparison_query not built — need at least origin, destination, and a date."
-            )
-
-        return TripCheckPayload(
-            success        = True,
-            booking_info   = booking_info,
-            comparison_query = comparison_query,
-        )
+        finally:
+            if tmp_file:
+                try:
+                    os.remove(tmp_file)
+                except Exception:
+                    pass
 
     # ── Comparison query builder ───────────────────────────────────────────────
 
