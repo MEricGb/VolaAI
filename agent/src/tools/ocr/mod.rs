@@ -144,7 +144,7 @@ impl Tool for OcrTool {
                     },
                     "image_path": {
                         "type": "string",
-                        "description": "Absolute or relative path to the booking screenshot image"
+                        "description": "Absolute/relative path to the booking screenshot image, or an http(s) URL"
                     }
                 },
                 "required": ["session_id", "image_path"]
@@ -153,6 +153,7 @@ impl Tool for OcrTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        tracing::info!(image_path = %args.image_path, "extract_booking_info tool invoked");
         let response = self
             .client
             .extract_booking_info(args.session_id, args.image_path, "tesseract".to_string())
