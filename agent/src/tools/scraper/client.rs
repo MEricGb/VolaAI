@@ -25,6 +25,7 @@ impl ScraperClient {
     ///
     /// Call once at startup and wrap in `Arc`.
     pub fn connect(url: String) -> Result<Self, AppError> {
+        tracing::info!(scraper_url = %url, "Connecting to scraper gRPC service");
         let channel = Channel::from_shared(url)
             .map_err(|e| AppError::Config(anyhow::anyhow!("Invalid scraper URL: {e}")))?
             .connect_lazy();
@@ -45,6 +46,7 @@ impl ScraperClient {
         children: u32,
         is_one_way: bool,
     ) -> Result<SearchResponse, AppError> {
+        tracing::info!(%origin, %destination, %depart_date, "ScraperClient: sending gRPC request");
         let mut client = self.inner.clone();
         let response = client
             .search_flights(SearchRequest {
@@ -56,7 +58,12 @@ impl ScraperClient {
                 children: children as i32, // safe: passenger counts never exceed i32::MAX
                 is_one_way,
             })
-            .await?;
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "ScraperClient: gRPC call failed");
+                AppError::from(e)
+            })?;
+        tracing::info!(offers = response.get_ref().offers.len(), "ScraperClient: gRPC response received");
         Ok(response.into_inner())
     }
 }

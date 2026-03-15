@@ -21,6 +21,7 @@ pub struct OcrClient {
 impl OcrClient {
     /// Connect to the OCR service at the given URL.
     pub fn connect(url: String) -> Result<Self, AppError> {
+        tracing::info!(ocr_url = %url, "Connecting to OCR gRPC service");
         let channel = Channel::from_shared(url)
             .map_err(|e| AppError::Config(anyhow::anyhow!("Invalid OCR URL: {e}")))?
             .connect_lazy();

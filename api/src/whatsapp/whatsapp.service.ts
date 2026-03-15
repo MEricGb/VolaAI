@@ -96,7 +96,10 @@ export class WhatsAppService {
     this.logger.log(`User ${from} not in active group. Falling back to 1-to-1 AI.`);
     // Default: Forward to AI Agent for 1-to-1 chat
     try {
-      const reply = await this.agentService.chat(profileName || from.replace('whatsapp:', ''), body);
+      const sessionId = profileName || from.replace('whatsapp:', '');
+      this.logger.log(`[1-to-1] Calling agent gRPC: session=${sessionId} message="${body}"`);
+      const reply = await this.agentService.chat(sessionId, body);
+      this.logger.log(`[1-to-1] Agent replied (${reply.length} chars)`);
       return this.buildTwiml(reply);
     } catch (err) {
       this.logger.error('Agent gRPC call failed (1-to-1)', err);
@@ -561,7 +564,9 @@ export class WhatsAppService {
 
     let reply = '';
     try {
+      this.logger.log(`[group] Calling agent gRPC: session=${senderName} message="${userMessage}"`);
       reply = await this.agentService.chat(senderName, userMessage);
+      this.logger.log(`[group] Agent replied (${reply.length} chars)`);
     } catch (err) {
       this.logger.error('Agent gRPC call failed', err);
       reply = '⚠️ Our AI assistant is temporarily unavailable. Please try again shortly.';
